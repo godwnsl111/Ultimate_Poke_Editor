@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><AssemblyName>UltimateEditor.Generator</AssemblyName><TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../vendor/pkhex/kwsch-PKHeX-bfe89c7/PKHeX.Core/PKHeX.Core.csproj" />
+    <Compile Include="../UltimateEditor/SelectionPolicy.cs" Link="SelectionPolicy.cs" />
+    <Compile Include="../UltimateEditor/EncounterCatalog.cs" Link="EncounterCatalog.cs" />
+    <Compile Include="../UltimateEditor/GameProfile.cs" Link="GameProfile.cs" />
+    <Compile Include="../UltimateEditor/EncounterAdapter.cs" Link="EncounterAdapter.cs" />
+    <Compile Include="../UltimateEditor/ScarletVioletCatalog.cs" Link="ScarletVioletCatalog.cs" />
+    <Compile Include="../UltimateEditor/TrainerLanguage.cs" Link="TrainerLanguage.cs" />
+    <Compile Include="../UltimateEditor/TrainerIdCodec.cs" Link="TrainerIdCodec.cs" />
+    <Compile Include="../UltimateEditor/LocationNames.cs" Link="LocationNames.cs" />
+    <Compile Include="../UltimateEditor/MirrorCatalog.cs" Link="MirrorCatalog.cs" />
+    <Compile Include="../UltimateEditor/GenerationSettings.cs" Link="GenerationSettings.cs" />
+    <Compile Include="../UltimateEditor/PokeFinderRng.cs" Link="PokeFinderRng.cs" />
+    <Compile Include="../UltimateEditor/GenerationEngine.cs" Link="GenerationEngine.cs" />
+    <Compile Include="../UltimateEditor/LinkedCatalog.cs" Link="LinkedCatalog.cs" />
+    <Compile Include="../UltimateEditor/DistributionCatalog.cs" Link="DistributionCatalog.cs" />
+    <Compile Include="../UltimateEditor/AcquisitionRequirements.cs" Link="AcquisitionRequirements.cs" />
+  </ItemGroup>
+</Project>

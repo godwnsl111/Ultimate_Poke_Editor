@@ -3,6 +3,12 @@ using System.Text.Json;
 using PKHeX.Core;
 using UltimateEditor;
 
+if (args.Length > 0 && args[0] == "--preview-only") { PreviewTests.Run(args[1]); return; }
+
+if (args.Length > 0 && args[0] == "--worker-probe") { GenerationTests.ProbeInstalledWorker(args[1]); return; }
+
+if (args.Length > 0 && args[0] == "--generation-only") { GenerationTests.Run(args.Skip(1)); return; }
+
 if (args.Length > 0 && args[0] == "--distribution-filter-only") { DistributionFilterTests.Run(args.Skip(1)); return; }
 
 if (args.Length > 0 && args[0] == "--language-only") { LanguageTests.Run(args.Skip(1)); return; }

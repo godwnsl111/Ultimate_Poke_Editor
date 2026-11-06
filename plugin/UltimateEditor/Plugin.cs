@@ -65,13 +65,15 @@ public sealed class Plugin : IPlugin
             var tabs = new TabControl { Dock = DockStyle.Fill };
             DataGridView? selectedGrid = null;
             InjectionPlan? lastPlan = null;
-            var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40 };
+            var generationOptions = new Dictionary<string, GenerationSettings>();
+            var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 75 };
             var selectAll = new Button { Text = "가능 항목 선택 (종/폼당 1)", AutoSize = true };
             var clear = new Button { Text = "선택 해제", AutoSize = true };
-            var preview = new Button { Text = "선택 개체 생성·주입 미리보기", AutoSize = true };
+            var preview = new Button { Text = "선택 개체 미리보기·조건 검색", AutoSize = true };
             var undo = new Button { Text = "이번 주입 취소", AutoSize = true, Enabled = false };
+            var configure = new Button { Text = "선택 개체 생성조건", AutoSize = true };
             var reviewed = new CheckBox { Text = "교환·연동 선행 조건 확인", AutoSize = true };
-            actions.Controls.AddRange([selectAll, clear, preview, undo, reviewed]);
+            actions.Controls.AddRange([selectAll, clear, configure, preview, undo, reviewed]);
             void RefreshReport()
             {
                 reviewed.Checked = false;
@@ -103,6 +105,7 @@ public sealed class Plugin : IPlugin
             selectedGrid = AddGrid(tabs, "선택된 경로", selected);
             selectedGrid.ReadOnly = false;
             foreach (DataGridViewColumn column in selectedGrid.Columns) column.ReadOnly = true;
+            selectedGrid.Columns.Insert(0, new DataGridViewTextBoxColumn { Name = "생성조건", HeaderText = "생성조건", ReadOnly = true });
             selectedGrid.Columns.Insert(0, new DataGridViewCheckBoxColumn { Name = "추가", HeaderText = "추가", ReadOnly = false });
             selectedGrid.Columns.Insert(1, new DataGridViewTextBoxColumn { Name = "교환레벨", HeaderText = "교환 레벨", ReadOnly = false });
             selectedGrid.DataBindingComplete += (_, _) => {
@@ -110,6 +113,7 @@ public sealed class Plugin : IPlugin
                 {
                     var route = report.Selected.Single(r => r.Id == row.Cells["Id"].Value?.ToString());
                     if (route.Kind == RouteKind.Trade && route.TradeLevelKnown) row.Cells["교환레벨"].Value = route.MinLevel;
+                    row.Cells["생성조건"].Value = generationOptions.TryGetValue(route.Id, out var options) ? options.Summary : "기본값";
                 }
             };
             selectedGrid.CellBeginEdit += (_, e) => {
@@ -148,6 +152,19 @@ public sealed class Plugin : IPlugin
             }
             selectAll.Click += (_, _) => Mark(true);
             clear.Click += (_, _) => Mark(false);
+            configure.Click += (_, _) => {
+                try {
+                    selectedGrid!.EndEdit();
+                    var rows = selectedGrid.Rows.Cast<DataGridViewRow>().Where(r => r.Cells["추가"].Value is true).ToArray();
+                    if (rows.Length == 0) throw new ArgumentException("조건을 지정할 개체의 추가 체크박스를 선택하세요.");
+                    string firstId = rows[0].Cells["Id"].Value!.ToString()!;
+                    var options = GenerationDialog.Show(window, rows.Length, generationOptions.GetValueOrDefault(firstId) ?? new GenerationSettings(), rows.Length == 1 ? report.Selected.Single(r => r.Id == firstId) : null);
+                    if (options is null) return;
+                    options.Validate();
+                    foreach (var row in rows) { generationOptions[row.Cells["Id"].Value!.ToString()!] = options; row.Cells["생성조건"].Value = options.Summary; }
+                }
+                catch (Exception ex) { MessageBox.Show(window, ex.Message, Name); }
+            };
             preview.Click += (_, _) => {
                 try
                 {
@@ -173,8 +190,21 @@ public sealed class Plugin : IPlugin
                     var snapshot = InjectionPlan.CloneSave(save);
                     int startBox = SaveFileEditor.CurrentBox;
                     var reviewConfirmed = reviewed.Checked;
-                    var plan = InjectionDialogs.Prepare(window, token => InjectionPlan.Prepare(save, version, chosen, trainerData, startBox, token, snapshot, reviewConfirmed, tradeLevels, linkedTrainerData));
-                    if (plan is null || !InjectionDialogs.Confirm(window, plan)) return;
+                    var plan = InjectionDialogs.Prepare(window, token => InjectionPlan.Prepare(save, version, chosen, trainerData, startBox, token, snapshot, reviewConfirmed, tradeLevels, linkedTrainerData, generationOptions));
+                    if (plan is null) return;
+                    var previewFingerprint = InjectionPlan.Fingerprint(snapshot);
+                    var confirmed = InjectionDialogs.Confirm(window, plan, (owner, options) => {
+                        if (!ReferenceEquals(SaveFileEditor.SAV, save) || !InjectionPlan.Fingerprint(save).SequenceEqual(previewFingerprint))
+                            throw new InvalidOperationException("미리보기 중 열린 세이브가 변경됐습니다. 창을 닫고 새 미리보기를 만드세요.");
+                        var requested = options.ToDictionary(p => p.Key, p => p.Value);
+                        foreach (var entry in requested) generationOptions[entry.Key] = entry.Value;
+                        return InjectionDialogs.Prepare(owner, token => InjectionPlan.Prepare(save, version, chosen, trainerData, startBox,
+                            token, snapshot, reviewConfirmed, tradeLevels, linkedTrainerData, requested));
+                    });
+                    foreach (DataGridViewRow row in selectedGrid.Rows)
+                        if (generationOptions.TryGetValue(row.Cells["Id"].Value!.ToString()!, out var options)) row.Cells["생성조건"].Value = options.Summary;
+                    if (confirmed is null) return;
+                    plan = confirmed;
                     plan.Commit(SaveFileEditor.SAV);
                     lastPlan = plan; undo.Enabled = true;
                     SaveFileEditor.ReloadSlots();
@@ -211,7 +241,7 @@ public sealed class Plugin : IPlugin
                 catch (ArgumentException ex) { MessageBox.Show(window, ex.Message, Name); return; }
                 using var dialog = new SaveFileDialog { Filter = "JSON|*.json", FileName = $"ultimate-editor-{version}{(mirrorChoice.Checked ? "-mirror" : "")}.json" };
                 if (dialog.ShowDialog(window) != DialogResult.OK) return;
-                try { File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(new { Catalog = report, DistributionLanguageFilter = distributionLanguage.Text, MirrorTrainers = mirrorTrainers, LinkedTrainers = linkedTrainers }, new JsonSerializerOptions { WriteIndented = true,
+                try { File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(new { Catalog = report, DistributionLanguageFilter = distributionLanguage.Text, MirrorTrainers = mirrorTrainers, LinkedTrainers = linkedTrainers, GenerationConditions = generationOptions }, new JsonSerializerOptions { WriteIndented = true,
                     Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } })); }
                 catch (Exception ex) { MessageBox.Show(window, ex.Message, Name); }
             };

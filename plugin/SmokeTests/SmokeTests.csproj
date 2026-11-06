@@ -18,5 +18,10 @@
     <Compile Include="../UltimateEditor/LinkedCatalog.cs" Link="LinkedCatalog.cs" />
     <Compile Include="../UltimateEditor/DistributionCatalog.cs" Link="DistributionCatalog.cs" />
     <Compile Include="../UltimateEditor/AcquisitionRequirements.cs" Link="AcquisitionRequirements.cs" />
+  <Compile Include="../UltimateEditor/GenerationSettings.cs" Link="GenerationSettings.cs" />
+    <Compile Include="../UltimateEditor/PokeFinderRng.cs" Link="PokeFinderRng.cs" />
+    <Compile Include="../UltimateEditor/GenerationEngine.cs" Link="GenerationEngine.cs" />
+    <Compile Include="../UltimateEditor/GenerationWorkerClient.cs" Link="GenerationWorkerClient.cs" />
+  <Compile Include="../UltimateEditor/PreviewSearchSession.cs" Link="PreviewSearchSession.cs" />
   </ItemGroup>
 </Project>

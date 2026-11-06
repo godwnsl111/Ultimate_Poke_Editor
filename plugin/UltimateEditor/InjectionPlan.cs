@@ -3,7 +3,7 @@ using PKHeX.Core;
 
 namespace UltimateEditor;
 
-public sealed record PlannedSlot(Route Route, int Box, int Slot, PKM Pokemon);
+public sealed record PlannedSlot(Route Route, int Box, int Slot, PKM Pokemon, GenerationSettings? Settings = null, string Generator = "PKHeX 기본", uint? Seed = null);
 
 // Plans only modify private clones. Live writes happen in Commit, after a stale-state check.
 public sealed class InjectionPlan
@@ -63,7 +63,7 @@ public sealed class InjectionPlan
 
     public static InjectionPlan Prepare(SaveFile live, GameVersion baseVersion, IReadOnlyList<Route> routes,
         IReadOnlyDictionary<GameVersion, TrainerProfile> trainers, int startBox, CancellationToken token = default,
-        SaveFile? snapshot = null, bool prerequisitesReviewed = false, IReadOnlyDictionary<string, byte>? tradeLevels = null, IReadOnlyDictionary<GameVersion, TrainerProfile>? linkedTrainers = null)
+        SaveFile? snapshot = null, bool prerequisitesReviewed = false, IReadOnlyDictionary<string, byte>? tradeLevels = null, IReadOnlyDictionary<GameVersion, TrainerProfile>? linkedTrainers = null, IReadOnlyDictionary<string, GenerationSettings>? generationSettings = null)
     {
         if (routes.Count == 0) throw new ArgumentException("추가할 포켓몬을 선택하세요.");
         if (!GameProfile.ResolveCandidates(live.Version).Contains(baseVersion)) throw new ArgumentException("열린 세이브와 기본 버전이 다릅니다.");
@@ -119,12 +119,21 @@ public sealed class InjectionPlan
                 else if (!route.TradeLevelKnown) throw new ArgumentException("이 NPC 교환은 교환 레벨을 직접 입력해야 합니다.");
                 if (tradeLevel < route.MinLevel || tradeLevel > route.MaxLevel) throw new ArgumentException("교환 레벨이 허용 범위 밖입니다.");
             }
+            var settings = generationSettings is not null && generationSettings.TryGetValue(route.Id, out var configured) ? configured : new GenerationSettings();
+            settings.Validate();
+            string generator = "PKHeX 기본"; uint? generationSeed = null;
             PKM? accepted = null;
             string failure = "생성 실패";
             for (int attempt = 0; attempt < 3; attempt++)
             {
                 token.ThrowIfCancellationRequested();
-                var generated = encounter.ConvertToPKM(creationTrainer, EncounterCriteria.Unrestricted);
+                PKM generated;
+                if (settings.IsSpecified)
+                {
+                    var result = GenerationWorkerClient.Generate(route, creationTrainer, settings, token);
+                    generated = result.Pokemon; generator = result.Method; generationSeed = result.Seed;
+                }
+                else generated = encounter.ConvertToPKM(creationTrainer, EncounterCriteria.Unrestricted);
                 if (route.LinkedSource is "COLO" or "XD") generated = generated switch { CK3 ck => ck.ConvertToPK3(), XK3 xk => xk.ConvertToPK3(), _ => throw new InvalidOperationException("GC 원본 형식이 아닙니다.") };
                 if (route.LinkedSource == "DreamRadar")
                 {
@@ -154,15 +163,15 @@ public sealed class InjectionPlan
                 staged.AdaptToSaveFile(generated, false, EntityImportOption.Enable);
                 generated.RefreshChecksum();
                 var legality = new LegalityAnalysis(generated);
-                if (generated.Valid && legality.Valid) { accepted = generated; break; }
-                failure = legality.Report();
+                if (generated.Valid && legality.Valid && settings.Matches(generated)) { accepted = generated; break; }
+                failure = !settings.Matches(generated) ? "생성 결과가 지정 조건과 다릅니다. 조건은 임의로 완화하지 않았습니다." : legality.Report();
             }
             if (accepted is null) throw new InvalidOperationException($"{route.Species} ({route.Version}) 적법성 검사 실패:\n{failure}");
             int index = empty[i];
             staged.SetBoxSlotAtIndex(accepted, index, new(EntityImportOption.Disable, EntityImportOption.Enable, EntityImportOption.Enable));
             var stored = staged.GetBoxSlotAtIndex(index);
-            Validate(stored, route);
-            slots.Add(new(route, index / staged.BoxSlotCount, index % staged.BoxSlotCount, stored));
+            Validate(stored, route, settings);
+            slots.Add(new(route, index / staged.BoxSlotCount, index % staged.BoxSlotCount, stored, settings, generator, generationSeed));
         }
         token.ThrowIfCancellationRequested();
         // Serializing clones also validates game-specific checksums and split storage (notably Gen3).
@@ -173,15 +182,15 @@ public sealed class InjectionPlan
         for (int i = 0; i < original.SlotCount; i++)
             if (!destinations.Contains(i) && !SlotBytes(original.GetBoxSlotAtIndex(i)).SequenceEqual(SlotBytes(parsed.GetBoxSlotAtIndex(i))))
                 throw new InvalidOperationException($"기존 슬롯 {i + 1} 보존 검사 실패. 반영하지 않습니다.");
-        foreach (var slot in slots) Validate(parsed.GetBoxSlotAtIndex(slot.Box, slot.Slot), slot.Route);
+        foreach (var slot in slots) Validate(parsed.GetBoxSlotAtIndex(slot.Box, slot.Slot), slot.Route, slot.Settings);
         return new(live, original, staged, slots);
     }
 
     private static byte[] SlotBytes(PKM pk) => pk.Data[..pk.SIZE_STORED].ToArray()
         .Concat(pk.NicknameTrash.ToArray()).Concat(pk.OriginalTrainerTrash.ToArray()).ToArray();
-    private static void Validate(PKM pk, Route route)
+    private static void Validate(PKM pk, Route route, GenerationSettings? settings = null)
     {
-        if (pk.Species != route.Species || pk.Form != route.Form || !pk.Valid)
+        if (pk.Species != route.Species || pk.Form != route.Form || !pk.Valid || settings is not null && !settings.Matches(pk))
             throw new InvalidOperationException("박스 재판독에서 개체 정보가 일치하지 않습니다.");
         var legality = new LegalityAnalysis(pk);
         if (!legality.Valid) throw new InvalidOperationException($"박스 반영 후 적법성 실패:\n{legality.Report()}");

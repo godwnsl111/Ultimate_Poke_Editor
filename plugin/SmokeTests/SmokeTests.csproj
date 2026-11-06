@@ -7,6 +7,10 @@
     <ProjectReference Include="../../vendor/pkhex/kwsch-PKHeX-bfe89c7/PKHeX.Core/PKHeX.Core.csproj" />
     <Compile Include="../UltimateEditor/SelectionPolicy.cs" Link="SelectionPolicy.cs" />
     <Compile Include="../UltimateEditor/EncounterCatalog.cs" Link="EncounterCatalog.cs" />
-    <Compile Include="../UltimateEditor/CatalogScope.cs" Link="CatalogScope.cs" />
+    <Compile Include="../UltimateEditor/GameProfile.cs" Link="GameProfile.cs" />
+    <Compile Include="../UltimateEditor/EncounterAdapter.cs" Link="EncounterAdapter.cs" />
+    <Compile Include="../UltimateEditor/ScarletVioletCatalog.cs" Link="ScarletVioletCatalog.cs" />
+    <Compile Include="../UltimateEditor/TrainerIdCodec.cs" Link="TrainerIdCodec.cs" />
+    <Compile Include="../UltimateEditor/MirrorCatalog.cs" Link="MirrorCatalog.cs" />
   </ItemGroup>
 </Project>

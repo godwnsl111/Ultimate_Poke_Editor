@@ -6,7 +6,8 @@ $env:NUGET_PACKAGES = Join-Path $PSScriptRoot 'tools/nuget'
 $sdk = Join-Path $PSScriptRoot 'tools/dotnet/dotnet.exe'
 & $sdk build (Join-Path $PSScriptRoot 'plugin/UltimateEditor') -c Release
 if ($LASTEXITCODE -ne 0) { throw 'Plugin build failed.' }
-& $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release -- (Join-Path $PSScriptRoot '../Pokemon FireRed.sav')
+$savePaths = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '..') -Filter '*.sav' -File | ForEach-Object { $_.FullName })
+& $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release -- @savePaths
 if ($LASTEXITCODE -ne 0) { throw 'Validation failed.' }
 $releaseDir = Join-Path $PSScriptRoot 'dist'
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null

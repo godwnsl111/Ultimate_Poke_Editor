@@ -1,6 +1,6 @@
 namespace UltimateEditor;
 
-public enum RouteKind { Wild, Gift, GiftEgg, Trade, Event, BredEgg, Unknown }
+public enum RouteKind { Wild, Gift, GiftEgg, Trade, Event, BredEgg, Unknown, Unavailable }
 
 public sealed record Route(
     string Id, ushort Species, byte Form, string Version, RouteKind Kind,
@@ -33,6 +33,7 @@ public static class SelectionPolicy
                 : r.Kind == RouteKind.BredEgg ? "breeding_excluded"
                 : r.Kind == RouteKind.Event ? "direct_distribution_not_verified"
                 : r.Kind == RouteKind.Unknown ? "unclassified_route"
+                : r.Kind == RouteKind.Unavailable ? "not_available_in_source_version"
                 : null;
             if (reason is null && r.Kind == RouteKind.Wild &&
                 ancestors.TryGetValue(r.Species, out var previous) && previous.Overlaps(wildSpecies))

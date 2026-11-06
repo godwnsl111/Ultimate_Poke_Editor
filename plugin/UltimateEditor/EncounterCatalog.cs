@@ -42,7 +42,7 @@ public static class EncounterCatalog
                 var method = EncounterAdapter.Method(e);
                 var requiresEvent = e is IFatefulEncounterReadOnly { FatefulEncounter: true };
                 routes.Add(new($"{version}-{index++:D5}", e.Species, e.Form, version.ToString(), kind,
-                    e.LevelMin, e.LevelMax, e.Location, method, e.LongName, requiresEvent));
+                    e.LevelMin, e.LevelMax, e.Location, method, e.LongName, requiresEvent, e.EggLocation));
             }
         }
         var result = SelectionPolicy.Select(routes, version.ToString(), ancestors, 1, profile.MaxSpecies);

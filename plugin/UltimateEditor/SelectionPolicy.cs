@@ -5,7 +5,10 @@ public enum RouteKind { Wild, Gift, GiftEgg, Trade, Event, BredEgg, Unknown, Una
 public sealed record Route(
     string Id, ushort Species, byte Form, string Version, RouteKind Kind,
     byte MinLevel, byte MaxLevel, ushort Location, string Method,
-    string Description, bool RequiresEvent = false);
+    string Description, bool RequiresEvent = false, ushort EggLocation = 0)
+{
+    public string LocationName => LocationNames.Get(this);
+}
 
 public sealed record Exclusion(Route Route, string Reason);
 public sealed record SelectionResult(IReadOnlyList<Route> Selected, IReadOnlyList<Exclusion> Excluded);

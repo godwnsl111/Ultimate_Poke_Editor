@@ -59,7 +59,8 @@ public sealed class Plugin : IPlugin
             var selected = report.Selected.Select(r => new {
                 번호 = r.Species, 이름 = ((Species)r.Species).ToString(), 경로 = r.Kind.ToString(),
                 출신버전 = r.Version, 폼 = r.Form, 구분 = r.Version == version.ToString() ? "기본 버전" : "상대 버전 전용",
-                최저레벨 = r.MinLevel, 최고레벨 = r.MaxLevel, 장소ID = r.Location,
+                최저레벨 = r.MinLevel, 최고레벨 = r.MaxLevel, 장소 = r.LocationName, 장소ID = r.Location,
+                알수령장소ID = r.EggLocation,
                 방법 = r.Method, 이벤트필요 = r.RequiresEvent, r.Id }).ToArray();
             var selectedGrid = AddGrid(tabs, "선택된 경로", selected);
             selectedGrid.CellFormatting += (_, e) => {
@@ -74,7 +75,7 @@ public sealed class Plugin : IPlugin
             AddGrid(tabs, "제외 근거", report.Excluded.Select(x => new {
                 번호 = x.Route.Species, 이름 = ((Species)x.Route.Species).ToString(),
                 경로 = x.Route.Kind.ToString(), 레벨 = x.Route.MinLevel,
-                장소ID = x.Route.Location, 사유 = x.Reason }).ToArray());
+                장소 = x.Route.LocationName, 장소ID = x.Route.Location, 알수령장소ID = x.Route.EggLocation, 사유 = x.Reason }).ToArray());
             }
             RefreshReport();
             void Rebuild()

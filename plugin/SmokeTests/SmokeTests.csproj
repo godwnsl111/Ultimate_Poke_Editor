@@ -11,6 +11,7 @@
     <Compile Include="../UltimateEditor/EncounterAdapter.cs" Link="EncounterAdapter.cs" />
     <Compile Include="../UltimateEditor/ScarletVioletCatalog.cs" Link="ScarletVioletCatalog.cs" />
     <Compile Include="../UltimateEditor/TrainerIdCodec.cs" Link="TrainerIdCodec.cs" />
+    <Compile Include="../UltimateEditor/LocationNames.cs" Link="LocationNames.cs" />
     <Compile Include="../UltimateEditor/MirrorCatalog.cs" Link="MirrorCatalog.cs" />
   </ItemGroup>
 </Project>

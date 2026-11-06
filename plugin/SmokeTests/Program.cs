@@ -101,6 +101,12 @@ try { TrainerIdCodec.FromDisplay("999999", "4294", true); }
 catch (ArgumentException) { overflowRejected = true; }
 Check(overflowRejected, "display ID overflow rejected instead of wrapping");
 Check(TrainerIdCodec.FromDisplay("65535", "65535", false) == (ushort.MaxValue, ushort.MaxValue), "legacy ID unchanged");
+Check(LocationNames.Get(R("pallet", 1, RouteKind.Gift, 5, 88), "en").Contains("Pallet"), "FR Pallet Town name lookup");
+Check(LocationNames.Get(R("route", 252, RouteKind.Gift, 5, 16, "E"), "en").Contains("101"), "Emerald Route 101 uses Gen3 names");
+Check(LocationNames.Get(R("route", 387, RouteKind.Gift, 5, 16, "Pt"), "en").Contains("201"), "Platinum Route 201 uses Gen4 names");
+var giftEgg = EncounterCatalog.Build(GameVersion.Pt).Selected.First(r => r.Species == 175 && r.Kind == RouteKind.GiftEgg);
+Check(giftEgg.EggLocation == 2011 && !string.IsNullOrWhiteSpace(LocationNames.Get(giftEgg, "en")), "gift egg uses received-egg location");
+Check(!string.IsNullOrWhiteSpace(LocationNames.Get(R("pallet", 1, RouteKind.Gift, 5, 88), "ko")), "Korean location lookup");
 var supportSummary = new List<object>();
 foreach (var version in GameProfile.Supported)
 {

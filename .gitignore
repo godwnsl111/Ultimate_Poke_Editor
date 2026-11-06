@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+data/cache/
+output/
+*.sav
+*.bak
+tools/
+vendor/
+**/bin/
+**/obj/

@@ -1,13 +1,15 @@
 namespace UltimateEditor;
 
-public enum RouteKind { Wild, Gift, GiftEgg, Trade, Event, BredEgg, Unknown, Unavailable }
+public enum RouteKind { Wild, Gift, GiftEgg, Trade, Event, BredEgg, Unknown, Unavailable, Distribution, Linked }
 
 public sealed record Route(
     string Id, ushort Species, byte Form, string Version, RouteKind Kind,
     byte MinLevel, byte MaxLevel, ushort Location, string Method,
-    string Description, bool RequiresEvent = false, ushort EggLocation = 0)
+    string Description, bool RequiresEvent = false, ushort EggLocation = 0,
+    string DistributionKey = "", string Requirement = "", ushort RequiredSpecies = 0, bool TradeLevelKnown = false, string LinkedSource = "")
 {
     public string LocationName => LocationNames.Get(this);
+    public bool NeedsReview => Kind is RouteKind.Trade or RouteKind.Linked;
 }
 
 public sealed record Exclusion(Route Route, string Reason);
@@ -34,7 +36,6 @@ public static class SelectionPolicy
                 : r.Species < first || r.Species > last ? "outside_species_range"
                 : allowedSpecies is not null && !allowedSpecies.Contains(r.Species) ? "outside_regional_dex"
                 : r.Kind == RouteKind.BredEgg ? "breeding_excluded"
-                : r.Kind == RouteKind.Event ? "direct_distribution_not_verified"
                 : r.Kind == RouteKind.Unknown ? "unclassified_route"
                 : r.Kind == RouteKind.Unavailable ? "not_available_in_source_version"
                 : null;

@@ -10,8 +10,13 @@
     <Compile Include="../UltimateEditor/GameProfile.cs" Link="GameProfile.cs" />
     <Compile Include="../UltimateEditor/EncounterAdapter.cs" Link="EncounterAdapter.cs" />
     <Compile Include="../UltimateEditor/ScarletVioletCatalog.cs" Link="ScarletVioletCatalog.cs" />
+    <Compile Include="../UltimateEditor/TrainerLanguage.cs" Link="TrainerLanguage.cs" />
     <Compile Include="../UltimateEditor/TrainerIdCodec.cs" Link="TrainerIdCodec.cs" />
     <Compile Include="../UltimateEditor/LocationNames.cs" Link="LocationNames.cs" />
     <Compile Include="../UltimateEditor/MirrorCatalog.cs" Link="MirrorCatalog.cs" />
+    <Compile Include="../UltimateEditor/InjectionPlan.cs" Link="InjectionPlan.cs" />
+    <Compile Include="../UltimateEditor/LinkedCatalog.cs" Link="LinkedCatalog.cs" />
+    <Compile Include="../UltimateEditor/DistributionCatalog.cs" Link="DistributionCatalog.cs" />
+    <Compile Include="../UltimateEditor/AcquisitionRequirements.cs" Link="AcquisitionRequirements.cs" />
   </ItemGroup>
 </Project>

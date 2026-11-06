@@ -8,7 +8,23 @@ public sealed record CatalogReport(string Version, string CoreVersion, string Sc
 public static class EncounterCatalog
 {
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<GameVersion, CatalogReport> Cache = new();
-    public static CatalogReport Build(GameVersion version) => Cache.GetOrAdd(version, BuildCore);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(GameVersion, string), IEncounterable> Templates = new();
+    public static IEncounterable GetTemplate(Route route)
+    {
+        if (route.Kind == RouteKind.Linked) return LinkedCatalog.GetTemplate(route);
+        if (route.Kind == RouteKind.Distribution) return DistributionCatalog.GetTemplate(route);
+        var version = Enum.Parse<GameVersion>(route.Version);
+        var report = Build(version);
+        if (!report.Selected.Contains(route) || !Templates.TryGetValue((version, route.Id), out var encounter))
+            throw new ArgumentException("현재 조회 목록에 없는 입수 경로입니다. 목록을 다시 조회하세요.");
+        return encounter;
+    }
+    public static CatalogReport Build(GameVersion version)
+    {
+        var native = Cache.GetOrAdd(version, BuildCore);
+        return native with { Selected = native.Selected.Concat(DistributionCatalog.Build(version))
+            .OrderBy(r => r.Species).ThenBy(r => r.Kind).ThenBy(r => r.Id).ToArray() };
+    }
     private static CatalogReport BuildCore(GameVersion version)
     {
         var profile = GameProfile.For(version);
@@ -41,14 +57,17 @@ public static class EncounterCatalog
                 }
                 var method = EncounterAdapter.Method(e);
                 var requiresEvent = e is IFatefulEncounterReadOnly { FatefulEncounter: true };
-                routes.Add(new($"{version}-{index++:D5}", e.Species, e.Form, version.ToString(), kind,
+                var id = $"{version}-{index++:D5}";
+                Templates[(version, id)] = e;
+                routes.Add(new(id, e.Species, e.Form, version.ToString(), kind,
                     e.LevelMin, e.LevelMax, e.Location, method, e.LongName, requiresEvent, e.EggLocation));
             }
         }
-        var result = SelectionPolicy.Select(routes, version.ToString(), ancestors, 1, profile.MaxSpecies);
+        var adjusted = AcquisitionRequirements.Apply(version, routes);
+        var result = SelectionPolicy.Select(adjusted, version.ToString(), ancestors, 1, profile.MaxSpecies);
         return new(version.ToString(), typeof(PKM).Assembly.GetName().Version?.ToString() ?? "unknown",
             "해당 게임 전체 입수 후보" +
-            "; no breeding or evolution expansion; direct event distributions pending verification; trade levels are template bounds, not generation-ready levels",
+            "; no breeding or evolution expansion; NPC/event prerequisites require review; direct distributions retain card constraints",
             result.Selected, result.Excluded);
     }
 }

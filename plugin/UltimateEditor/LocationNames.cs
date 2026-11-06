@@ -8,6 +8,7 @@ public static class LocationNames
     {
         if (!Enum.TryParse<GameVersion>(route.Version, out var version)) return "장소 정보 없음";
         var profile = GameProfile.For(version);
+        if (route.LinkedSource is "COLO" or "XD" && route.Location != 255) version = GameVersion.CXD;
         var egg = route.Kind == RouteKind.GiftEgg && route.EggLocation != 0;
         var id = egg ? route.EggLocation : route.Location;
         var strings = language is null ? GameInfo.Strings : GameInfo.GetStrings(language);

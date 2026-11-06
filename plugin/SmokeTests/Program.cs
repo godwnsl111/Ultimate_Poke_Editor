@@ -3,6 +3,18 @@ using System.Text.Json;
 using PKHeX.Core;
 using UltimateEditor;
 
+if (args.Length > 0 && args[0] == "--distribution-filter-only") { DistributionFilterTests.Run(args.Skip(1)); return; }
+
+if (args.Length > 0 && args[0] == "--language-only") { LanguageTests.Run(args.Skip(1)); return; }
+
+if (args.Length > 0 && args[0] == "--linked-only") { LinkedTests.Run(args.Skip(1)); return; }
+
+if (args.Length > 0 && args[0] == "--events-only")
+{
+    foreach (var path in args.Skip(1)) EventTests.Run(SaveUtil.GetSaveFile(File.ReadAllBytes(path))!);
+    return;
+}
+
 static void Check(bool condition, string message)
 {
     if (!condition) throw new Exception(message);
@@ -22,7 +34,7 @@ var fixture = new[] {
 };
 var ancestors = new Dictionary<ushort, HashSet<ushort>> { [30] = [29], [26] = [25] };
 var result = SelectionPolicy.Select(fixture, "FR", ancestors, 1, 386);
-Check(result.Selected.Select(r => r.Id).ToHashSet().SetEquals(["low", "gift", "egg", "only-evolved"]),
+Check(result.Selected.Select(r => r.Id).ToHashSet().SetEquals(["low", "gift", "egg", "only-evolved", "event"]),
     "minimum wild, wild ancestor exclusion, gift exception, no breeding, version filter, tie break");
 Check(result.Selected.SequenceEqual(SelectionPolicy.Select(fixture.Reverse(), "FR", ancestors, 1, 386).Selected),
     "source order does not affect selection");
@@ -45,7 +57,7 @@ foreach (var version in new[] { GameVersion.FR, GameVersion.LG, GameVersion.R, G
     Check(report.Selected.All(r => r.Version == own), $"{version} primary routes retain source version");
     Check(!report.Selected.Any(r => r.Kind is RouteKind.BredEgg or RouteKind.Unknown), $"{version} no breeding or unclassified candidates");
     Check(!report.Selected.GroupBy(r => (r.Species, r.Form)).Any(g => g.Count(r => r.Kind == RouteKind.Wild) > 1), $"{version} wild minimum route per species/form");
-    Check(!merged.Selected.GroupBy(r => r.Species).Any(g => g.Select(r => r.Version).Distinct().Count() > 1), $"{version} merged source deduplication");
+    Check(!merged.Selected.Where(r => r.Kind != RouteKind.Distribution).GroupBy(r => r.Species).Any(g => g.Select(r => r.Version).Distinct().Count() > 1), $"{version} merged source deduplication");
     Check(report.Selected.All(r => merged.Selected.Contains(r)), $"{version} mirror merge preserves primary routes");
     Check(MirrorCatalog.Build(version, false).Selected.SequenceEqual(report.Selected), $"{version} mirror disabled is primary only");
     Check(merged.MirrorVersions.Count == (version is GameVersion.FR or GameVersion.LG ? 1 : 2), $"{version} correct mirror group size");
@@ -82,7 +94,7 @@ foreach (var version in new[] { GameVersion.FR, GameVersion.LG, GameVersion.R, G
         Check(report.Selected.Any(r => r.Species == 175 && r.Kind == RouteKind.GiftEgg), "Platinum Togepi gift egg");
         Check(merged.Selected.Any(r => r.Species == 434 && r.Version == "D"), "Platinum adds Diamond Stunky");
         Check(merged.Selected.Any(r => r.Species == 431 && r.Version == "P"), "Platinum adds Pearl Glameow");
-        Check(merged.Selected.Where(r => r.Species == 387).All(r => r.Version == "Pt"), "Platinum shared starter remains primary");
+        Check(merged.Selected.Where(r => r.Species == 387 && r.Kind != RouteKind.Distribution).All(r => r.Version == "Pt"), "Platinum shared starter remains primary");
     }
     var output = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../output"));
     Directory.CreateDirectory(output);
@@ -116,7 +128,7 @@ foreach (var version in GameProfile.Supported)
     Check(report.Selected.All(r => r.Version == version.ToString()), $"ALL {version} source version correct");
     Check(report.Selected.All(r => r.Kind is not (RouteKind.BredEgg or RouteKind.Unknown)), $"ALL {version} excludes breeding and unclassified data");
     Check(mirror.MirrorVersions.Count == MirrorCatalog.Partners(version).Length, $"ALL {version} correct mirror count");
-    Check(!mirror.Selected.GroupBy(r => r.Species).Any(g => g.Select(r => r.Version).Distinct().Count() > 1), $"ALL {version} mirror deduplication");
+    Check(!mirror.Selected.Where(r => r.Kind != RouteKind.Distribution).GroupBy(r => r.Species).Any(g => g.Select(r => r.Version).Distinct().Count() > 1), $"ALL {version} mirror deduplication");
     supportSummary.Add(new { Version = version.ToString(), Name = GameProfile.DisplayName(version),
         Context = GameProfile.For(version).Context.ToString(), Species = report.Selected.Select(r => r.Species).Distinct().Count(),
         Routes = report.Selected.Count, MirrorSpecies = mirror.Selected.Select(r => r.Species).Distinct().Count(),
@@ -134,9 +146,13 @@ foreach (var savePath in args)
     var before = SHA256.HashData(File.ReadAllBytes(savePath));
     var save = SaveUtil.GetSaveFile(File.ReadAllBytes(savePath));
     Check(save is not null, "save recognized by PKHeX");
-    Check(GameProfile.For(save!.Version).Generation == save.Generation, "detected save uses correct game profile");
-    var report = EncounterCatalog.Build(save.Version);
-    Check(report.Version == save.Version.ToString(), "catalog uses detected save version");
-    Console.WriteLine($"Save version: {save.Version}; trainer fields available (not printed)");
+    var versions = GameProfile.ResolveCandidates(save!.Version);
+    Check(versions.Length > 0, "save has supported exact or ambiguous version candidates");
+    Check(versions.All(v => GameProfile.For(v).Generation == save.Generation), "detected save uses correct generation profiles");
+    foreach (var chosenVersion in versions) InjectionTests.Run(save, chosenVersion);
+    EventTests.Run(save);
+    var report = EncounterCatalog.Build(versions[0]);
+    Check(report.Version == versions[0].ToString(), "catalog uses resolved version candidate");
+    Console.WriteLine($"Save version: {save.Version}; candidates: {string.Join(",", versions)}; trainer values not printed");
     Check(before.SequenceEqual(SHA256.HashData(File.ReadAllBytes(savePath))), "original save unchanged");
 }

@@ -24,8 +24,19 @@ public sealed record GameProfile(byte Generation, ushort MaxSpecies, EntityConte
     }
     public static GameVersion[] ResolveCandidates(GameVersion version) => Supported.Contains(version) ? [version]
         : Supported.Where(v => version.Contains(v)).ToArray();
+    // Raw FR/LG and R/S files do not reliably identify the paired edition.
+    // For imported trainer data the user has explicitly selected the source version panel.
+    public static GameVersion[] ImportCandidates(SaveFile save) => save switch
+    {
+        SAV3Colosseum => [GameVersion.COLO],
+        SAV3XD => [GameVersion.XD],
+        SAV3FRLG => [GameVersion.FR, GameVersion.LG],
+        SAV3RS => [GameVersion.R, GameVersion.S],
+        _ => ResolveCandidates(save.Version),
+    };
     public static string DisplayName(GameVersion v) => v switch
     {
+        GameVersion.COLO => "콜로세움", GameVersion.XD => "XD",
         GameVersion.RD => "레드", GameVersion.GN => "그린/블루(해외)", GameVersion.BU => "블루(일본)", GameVersion.YW => "피카츄",
         GameVersion.GD => "골드", GameVersion.SI => "실버", GameVersion.C => "크리스탈",
         GameVersion.R => "루비", GameVersion.S => "사파이어", GameVersion.E => "에메랄드",

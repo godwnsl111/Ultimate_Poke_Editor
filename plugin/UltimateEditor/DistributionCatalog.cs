@@ -13,7 +13,7 @@ public static class DistributionCatalog
         var pk = EntityBlank.GetBlank(profile.Context); pk.Version = version;
         var result = new List<Route>();
         var seen = new HashSet<string>();
-        foreach (var gift in EncounterEvent.GetAllEvents(false).OfType<DataMysteryGift>())
+        foreach (var gift in DistributionSources.GetAll())
         {
             if (gift.Context != profile.Context || !gift.IsEntity || gift.IsItem || gift.Species == 0 || gift.Species > profile.MaxSpecies) continue;
             if (!CanReceive(gift, version, pk)) continue;
@@ -69,6 +69,12 @@ public static class DistributionCatalog
         return clone;
     }
 
+    public static DistributionDateInfo? DateInfo(Route route)
+    {
+        if (route.Kind != RouteKind.Distribution) return null;
+        var version = Enum.Parse<GameVersion>(route.Version);
+        return Templates.TryGetValue((version, route.Id), out var gift) ? DistributionDates.Describe(gift) : null;
+    }
     public static bool MatchesLanguage(Route route, int language)
     {
         if (route.Kind != RouteKind.Distribution) return true;

@@ -98,7 +98,8 @@ public sealed class Plugin : IPlugin
                 입수버전 = r.Version, 연동출처 = r.LinkedSource, 폼 = r.Form, 구분 = r.Version == version.ToString() ? "기본 버전" : "상대 버전 전용",
                 주입지원 = InjectionDialogs.IsSupported(r) && AcquisitionRequirements.LanguageIssue(r, ReceivingLanguage(r)) is null,
                 입수언어안내 = AcquisitionRequirements.LanguageIssue(r, ReceivingLanguage(r)) ?? "",
-                배포명 = r.Kind == RouteKind.Distribution ? r.Description : "", 배포수령언어 = DistributionCatalog.ReceiverLanguageLabel(r), 선행조건 = r.Requirement,
+                배포명 = r.Kind == RouteKind.Distribution ? r.Description : "", 배포수령언어 = DistributionCatalog.ReceiverLanguageLabel(r), 배포허용기간 = DistributionCatalog.DateInfo(r)?.Period ?? "",
+                카드기록일 = DistributionCatalog.DateInfo(r)?.CardDateText ?? "", 자동적용날짜 = DistributionCatalog.DateInfo(r)?.SuggestedText ?? "", 날짜근거 = DistributionCatalog.DateInfo(r)?.Source ?? "", 선행조건 = r.Requirement,
                 최저레벨 = r.MinLevel, 최고레벨 = r.MaxLevel, 장소 = r.LocationName, 장소ID = r.Location,
                 알수령장소ID = r.EggLocation,
                 방법 = r.Method, 이벤트필요 = r.RequiresEvent, r.Id }).ToArray();
@@ -190,7 +191,7 @@ public sealed class Plugin : IPlugin
                     var snapshot = InjectionPlan.CloneSave(save);
                     int startBox = SaveFileEditor.CurrentBox;
                     var reviewConfirmed = reviewed.Checked;
-                    var plan = InjectionDialogs.Prepare(window, token => InjectionPlan.Prepare(save, version, chosen, trainerData, startBox, token, snapshot, reviewConfirmed, tradeLevels, linkedTrainerData, generationOptions));
+                    var plan = InjectionDialogs.Prepare(window, token => InjectionPlan.Prepare(save, version, chosen, trainerData, startBox, token, snapshot, reviewConfirmed, tradeLevels, linkedTrainerData, generationOptions, allowUndatedPreview: true));
                     if (plan is null) return;
                     var previewFingerprint = InjectionPlan.Fingerprint(snapshot);
                     var confirmed = InjectionDialogs.Confirm(window, plan, (owner, options) => {
@@ -241,7 +242,7 @@ public sealed class Plugin : IPlugin
                 catch (ArgumentException ex) { MessageBox.Show(window, ex.Message, Name); return; }
                 using var dialog = new SaveFileDialog { Filter = "JSON|*.json", FileName = $"ultimate-editor-{version}{(mirrorChoice.Checked ? "-mirror" : "")}.json" };
                 if (dialog.ShowDialog(window) != DialogResult.OK) return;
-                try { File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(new { Catalog = report, DistributionLanguageFilter = distributionLanguage.Text, MirrorTrainers = mirrorTrainers, LinkedTrainers = linkedTrainers, GenerationConditions = generationOptions }, new JsonSerializerOptions { WriteIndented = true,
+                try { File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(new { Catalog = report, DistributionLanguageFilter = distributionLanguage.Text, MirrorTrainers = mirrorTrainers, LinkedTrainers = linkedTrainers, GenerationConditions = generationOptions, DistributionDateMetadata = report.Selected.Where(r => r.Kind == RouteKind.Distribution).ToDictionary(r => r.Id, DistributionCatalog.DateInfo) }, new JsonSerializerOptions { WriteIndented = true,
                     Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } })); }
                 catch (Exception ex) { MessageBox.Show(window, ex.Message, Name); }
             };

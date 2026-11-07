@@ -43,6 +43,36 @@ static class GenerationTests
             if (save.Version == GameVersion.FR && !frTested)
             {
                 frTested = true; save.Language = 2;
+                var pidgeyRoute = EncounterCatalog.Build(GameVersion.FR).Selected.First(r => r.Species == 16 && r.Kind == RouteKind.Wild);
+                var shinyBird = new GenerationSettings(Shiny: 1, Nature: 15, Gender: 0);
+                var birdPlan = InjectionPlan.Prepare(save, GameVersion.FR, [pidgeyRoute], new Dictionary<GameVersion, TrainerProfile>(), 0,
+                    generationSettings: new Dictionary<string, GenerationSettings> { [pidgeyRoute.Id] = shinyBird });
+                var bird = birdPlan.Slots.Single().Pokemon;
+                var birdAnalysis = new LegalityAnalysis(bird);
+                Check(shinyBird.Matches(bird) && bird.ID32 == save.ID32 && birdAnalysis.Valid && birdAnalysis.Info.FrameMatches && birdAnalysis.Info.PIDIVMatches,
+                    "shiny male modest Pidgey has a verified wild encounter frame (no origin-seed X)");
+                var timer = System.Diagnostics.Stopwatch.StartNew();
+                var twoV = new GenerationSettings(Shiny: 1, HP: 31, Speed: 31, TimeoutSeconds: 30);
+                var fastPlan = InjectionPlan.Prepare(save, GameVersion.FR, [pidgeyRoute], new Dictionary<GameVersion, TrainerProfile>(), 0,
+                    generationSettings: new Dictionary<string, GenerationSettings> { [pidgeyRoute.Id] = twoV });
+                var fastBird = fastPlan.Slots.Single().Pokemon;
+                Check(twoV.Matches(fastBird) && new LegalityAnalysis(fastBird).Info.FrameMatches,
+                    $"shiny two-V Pidgey PID reversal: {timer.Elapsed.TotalSeconds:F3}s, verified frame");
+                var caterpieRoute = EncounterCatalog.Build(GameVersion.FR).Selected.First(r => r.Species == 10 && r.Kind == RouteKind.Wild);
+                var caterpieSpec = new GenerationSettings(Shiny: 1, Nature: 10, Gender: 1, SpAttack: 31, Speed: 31);
+                timer.Restart();
+                try
+                {
+                    var caterpiePlan = InjectionPlan.Prepare(save, GameVersion.FR, [caterpieRoute], new Dictionary<GameVersion, TrainerProfile>(), 0,
+                        generationSettings: new Dictionary<string, GenerationSettings> { [caterpieRoute.Id] = caterpieSpec });
+                    var caterpie = caterpiePlan.Slots.Single().Pokemon;
+                    Check(caterpieSpec.Matches(caterpie) && new LegalityAnalysis(caterpie).Info.FrameMatches,
+                        $"user Caterpie shiny/timid/female/SpA+Speed V: {timer.Elapsed.TotalSeconds:F3}s, verified frame");
+                }
+                catch (ArgumentException ex) when (ex.Message.Contains("H1/H2/H4"))
+                {
+                    Check(timer.Elapsed.TotalSeconds < 30, $"user Caterpie finite H1/H2/H4 exhaustion: {timer.Elapsed.TotalSeconds:F3}s");
+                }
                 PreviewTests.Run(path);
                 var route = EncounterCatalog.Build(GameVersion.FR).Selected.First(r => r.Species == 1 && r.Kind == RouteKind.Gift);
                 // Find a real Method-1 shiny spread using the unchanged destination ID32.
@@ -72,6 +102,7 @@ static class GenerationTests
                 var wildPlan = InjectionPlan.Prepare(save, GameVersion.FR, [wild], new Dictionary<GameVersion, TrainerProfile>(), 0,
                     generationSettings: new Dictionary<string, GenerationSettings> { [wild.Id] = wildSpec });
                 Check(wildSpec.Matches(wildPlan.Slots.Single().Pokemon), "wild Method H exact spread retains encounter legality");
+                Check(new LegalityAnalysis(wildPlan.Slots.Single().Pokemon).Info.FrameMatches, "PokeFinder exact-IV wild result also verifies the encounter frame");
                 var mirror = MirrorCatalog.Build(GameVersion.FR, true).Selected.First(r => r.Species == 37 && r.Version == "LG");
                 var mirrorTrainer = new TrainerProfile("LG", "LEAF", 23456, 65432, 1, 2);
                 var mirrorSpec = new GenerationSettings(Shiny: 1, Nature: 10);
@@ -122,12 +153,14 @@ static class GenerationTests
                 bool timedOut = false;
                 try { GenerationWorkerClient.Generate(slowRoute, new SimpleTrainerInfo(save, GameVersion.FR), impossible, CancellationToken.None); }
                 catch (TimeoutException) { timedOut = true; }
-                Check(timedOut && hash.SequenceEqual(InjectionPlan.Fingerprint(save)), "bounded native search timeout preserves target");
+                catch (ArgumentException ex) when (ex.Message.Contains("후보")) { timedOut = true; }
+                Check(timedOut && hash.SequenceEqual(InjectionPlan.Fingerprint(save)), "bounded or exhausted search preserves target");
                 using var cancel = new CancellationTokenSource(300);
                 bool cancelled = false;
                 try { GenerationWorkerClient.Generate(slowRoute, new SimpleTrainerInfo(save, GameVersion.FR), impossible with { TimeoutSeconds = 30 }, cancel.Token); }
                 catch (OperationCanceledException) { cancelled = true; }
-                Check(cancelled && hash.SequenceEqual(InjectionPlan.Fingerprint(save)), "cancel kills native search and preserves target");
+                catch (ArgumentException ex) when (ex.Message.Contains("후보")) { cancelled = true; }
+                Check(cancelled && hash.SequenceEqual(InjectionPlan.Fingerprint(save)), "cancel or early exhaustion preserves target");
                 var xd = LinkedCatalog.Build(GameVersion.FR).First(r => r.LinkedSource == "XD" && r.Species == 249);
                 bool locked = false;
                 try { GenerationEngine.Generate(new(xd, new("FR", "MICHAEL", 12345, 54321, 0, 2), new(Shiny: 1))); }

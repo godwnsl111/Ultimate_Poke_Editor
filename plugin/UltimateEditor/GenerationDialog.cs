@@ -32,13 +32,17 @@ internal static class GenerationDialog
         var ability = Choice("특성", abilityNames, initial.Ability + 1, 180);
         layout.SetFlowBreak(ability, true);
         var gender = Choice("포켓몬 성별", ["무관", "수컷", "암컷", "무성"], initial.Gender + 1, 100);
-        layout.SetFlowBreak(gender, true);
+        layout.Controls.Add(new Label { Text = "만난 날짜 (체크 해제: 자동)", AutoSize = true, Padding = new Padding(0, 6, 0, 0) });
+        var metDate = new DateTimePicker { ShowCheckBox = true, Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd", Width = 145,
+            MinDate = new DateTime(2000, 1, 1), MaxDate = new DateTime(2099, 12, 31),
+            Value = (initial.MetDate ?? DateOnly.FromDateTime(DateTime.Today)).ToDateTime(TimeOnly.MinValue) };
+        metDate.Checked = initial.MetDate is not null; layout.Controls.Add(metDate); layout.SetFlowBreak(metDate, true);
         var explanation = new Label { Text = "개체값 순서: HP / 공격 / 방어 / 특수공격 / 특수방어 / 스피드", AutoSize = true, Padding = new Padding(0, 12, 0, 6) };
         layout.Controls.Add(explanation); layout.SetFlowBreak(explanation, true);
         var ivs = new List<ComboBox>();
-        foreach (int iv in initial.IVs) ivs.Add(Choice("", new[] { "무관" }.Concat(Enumerable.Range(0, 32).Select(i => i.ToString())).ToArray(), iv + 1, 88));
+        foreach (int iv in initial.IVs) ivs.Add(Choice("", ["무관", "Z(0)", "V(31)"], iv switch { 0 => 1, 31 => 2, _ => 0 }, 88));
         layout.SetFlowBreak(ivs[^1], true);
-        var all31 = new Button { Text = "모두 31", AutoSize = true }; all31.Click += (_, _) => ivs.ForEach(i => i.SelectedIndex = 32);
+        var all31 = new Button { Text = "모두 V(31)", AutoSize = true }; all31.Click += (_, _) => ivs.ForEach(i => i.SelectedIndex = 2);
         var random = new Button { Text = "IV 모두 무관", AutoSize = true }; random.Click += (_, _) => ivs.ForEach(i => i.SelectedIndex = 0);
         layout.Controls.Add(all31); layout.Controls.Add(random);
         layout.Controls.Add(new Label { Text = "개체당 검색 제한(초)", AutoSize = true, Padding = new Padding(0, 6, 0, 0) });
@@ -52,8 +56,8 @@ internal static class GenerationDialog
         buttons.Controls.Add(new Button { Text = "취소", DialogResult = DialogResult.Cancel });
         dialog.Controls.Add(buttons);
         if (dialog.ShowDialog(owner) != DialogResult.OK) return null;
-        int[] values = ivs.Select(i => i.SelectedIndex - 1).ToArray();
+        int[] values = ivs.Select(i => i.SelectedIndex switch { 1 => 0, 2 => 31, _ => -1 }).ToArray();
         return new(shiny.SelectedIndex - 1, nature.SelectedIndex - 1, ability.SelectedIndex - 1,
-            values[0], values[1], values[2], values[3], values[4], values[5], (int)timeout.Value, gender.SelectedIndex - 1);
+            values[0], values[1], values[2], values[3], values[4], values[5], (int)timeout.Value, gender.SelectedIndex - 1, metDate.Checked ? DateOnly.FromDateTime(metDate.Value) : null);
     }
 }

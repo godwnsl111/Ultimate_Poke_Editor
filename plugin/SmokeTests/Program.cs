@@ -3,6 +3,13 @@ using System.Text.Json;
 using PKHeX.Core;
 using UltimateEditor;
 
+if (args.Length == 0 || args[0] != "--worker-probe")
+    GenerationWorkerClient.WorkerPathOverride = Path.Combine(Directory.GetCurrentDirectory(), "plugin/GeneratorWorker/bin/Release/net10.0/UltimateEditor.Generator.exe");
+
+if (args.Length > 0 && args[0] == "--gen7-dates-only") { Gen7DateTests.Run(); return; }
+
+if (args.Length > 0 && args[0] == "--dates-only") { DistributionDateTests.Run(args.Skip(1)); return; }
+
 if (args.Length > 0 && args[0] == "--preview-only") { PreviewTests.Run(args[1]); return; }
 
 if (args.Length > 0 && args[0] == "--worker-probe") { GenerationTests.ProbeInstalledWorker(args[1]); return; }

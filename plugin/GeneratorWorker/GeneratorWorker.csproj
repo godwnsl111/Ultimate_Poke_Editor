@@ -20,5 +20,7 @@
     <Compile Include="../UltimateEditor/LinkedCatalog.cs" Link="LinkedCatalog.cs" />
     <Compile Include="../UltimateEditor/DistributionCatalog.cs" Link="DistributionCatalog.cs" />
     <Compile Include="../UltimateEditor/AcquisitionRequirements.cs" Link="AcquisitionRequirements.cs" />
+  <Compile Include="../UltimateEditor/DistributionDates.cs" Link="DistributionDates.cs" />
+  <Compile Include="../UltimateEditor/DistributionSources.cs" Link="DistributionSources.cs" />
   </ItemGroup>
 </Project>

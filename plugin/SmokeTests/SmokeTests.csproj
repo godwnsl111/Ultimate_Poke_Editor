@@ -23,5 +23,7 @@
     <Compile Include="../UltimateEditor/GenerationEngine.cs" Link="GenerationEngine.cs" />
     <Compile Include="../UltimateEditor/GenerationWorkerClient.cs" Link="GenerationWorkerClient.cs" />
   <Compile Include="../UltimateEditor/PreviewSearchSession.cs" Link="PreviewSearchSession.cs" />
+  <Compile Include="../UltimateEditor/DistributionDates.cs" Link="DistributionDates.cs" />
+  <Compile Include="../UltimateEditor/DistributionSources.cs" Link="DistributionSources.cs" />
   </ItemGroup>
 </Project>

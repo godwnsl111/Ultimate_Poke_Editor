@@ -11,20 +11,17 @@ public static class PokeFinderRng
 {
     static uint Next(uint s, bool xd = false) => unchecked(s * (xd ? 0x343FDu : 0x41C64E6Du) + (xd ? 0x269EC3u : 0x6073u));
     static uint Prev(uint s, bool xd = false) => unchecked(s * (xd ? 0xB9B33155u : 0xEEB9EB65u) + (xd ? 0xA170F641u : 0x0A3561A1u));
-    // Exhaust the unknown low 16 bits and bit 31. Same recovered states as
-    // PokeFinder's lattice reversal, using a simple bounded enumeration.
+    // PKHeX's bounded lattice reversal returns the state before the first IV
+    // call; the PokeFinder calculation below expects the state after that call.
     static IEnumerable<uint> Recover(int[] iv, bool gap, bool xd)
     {
         uint first = (uint)(iv[0] | iv[1] << 5 | iv[2] << 10) << 16;
         uint second = (uint)(iv[5] | iv[3] << 5 | iv[4] << 10) << 16;
-        for (uint low = 0; low <= 65535; low++)
-        {
-            uint state = first | low;
-            uint end = Next(state, xd);
-            if (gap) end = Next(end, xd);
-            if ((end & 0x7FFF0000) != second) continue;
-            yield return state; yield return state ^ 0x80000000;
-        }
+        uint[] seeds = new uint[16];
+        int count = xd ? PKHeX.Core.XDRNG.GetSeedsIVs(seeds, first, second)
+            : gap ? PKHeX.Core.LCRNGReversalSkip.GetSeedsIVs(seeds, first, second)
+            : PKHeX.Core.LCRNGReversal.GetSeedsIVs(seeds, first, second);
+        for (int i = 0; i < count; i++) yield return Next(seeds[i], xd);
     }
     public static int GameCubeAbility(uint origin) => (int)((Next(Next(Next(origin, true), true), true) >> 16) & 1);
     public static IReadOnlyList<PidCandidate> Calculate(int[] iv, int nature, ushort tid)

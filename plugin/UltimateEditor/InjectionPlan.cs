@@ -16,6 +16,7 @@ public sealed class InjectionPlan
     private readonly bool wasEdited;
     public IReadOnlyList<PlannedSlot> Slots { get; }
     public bool Committed { get; private set; }
+    public bool HasUnconfirmedDates => Slots.Any(s => s.Settings?.MetDate is null && DistributionCatalog.DateInfo(s.Route)?.NeedsExplicitDate == true);
 
     private InjectionPlan(SaveFile live, SaveFile original, SaveFile staged, IReadOnlyList<PlannedSlot> slots)
     {
@@ -63,7 +64,7 @@ public sealed class InjectionPlan
 
     public static InjectionPlan Prepare(SaveFile live, GameVersion baseVersion, IReadOnlyList<Route> routes,
         IReadOnlyDictionary<GameVersion, TrainerProfile> trainers, int startBox, CancellationToken token = default,
-        SaveFile? snapshot = null, bool prerequisitesReviewed = false, IReadOnlyDictionary<string, byte>? tradeLevels = null, IReadOnlyDictionary<GameVersion, TrainerProfile>? linkedTrainers = null, IReadOnlyDictionary<string, GenerationSettings>? generationSettings = null)
+        SaveFile? snapshot = null, bool prerequisitesReviewed = false, IReadOnlyDictionary<string, byte>? tradeLevels = null, IReadOnlyDictionary<GameVersion, TrainerProfile>? linkedTrainers = null, IReadOnlyDictionary<string, GenerationSettings>? generationSettings = null, bool allowUndatedPreview = false)
     {
         if (routes.Count == 0) throw new ArgumentException("추가할 포켓몬을 선택하세요.");
         if (!GameProfile.ResolveCandidates(live.Version).Contains(baseVersion)) throw new ArgumentException("열린 세이브와 기본 버전이 다릅니다.");
@@ -100,6 +101,7 @@ public sealed class InjectionPlan
             if (route.Form >= EncounterUtil.FormDynamic)
                 throw new ArgumentException($"{route.Species}: 동적 폼은 아직 주입할 수 없습니다.");
             var encounter = EncounterCatalog.GetTemplate(route);
+            var distributionDate = DistributionCatalog.DateInfo(route);
             var creationTrainer = sourceTrainers[Enum.Parse<GameVersion>(route.Version)];
             if (route.LinkedSource is "COLO" or "XD")
             {
@@ -128,7 +130,7 @@ public sealed class InjectionPlan
             {
                 token.ThrowIfCancellationRequested();
                 PKM generated;
-                if (settings.IsSpecified)
+                if (settings.IsSpecified || encounter is EncounterSlot3)
                 {
                     var result = GenerationWorkerClient.Generate(route, creationTrainer, settings, token);
                     generated = result.Pokemon; generator = result.Method; generationSeed = result.Seed;
@@ -161,16 +163,20 @@ public sealed class InjectionPlan
                         throw new ArgumentException("이 세대 NPC 교환은 템플릿의 고정 수령 레벨을 사용해야 합니다.");
                 }
                 staged.AdaptToSaveFile(generated, false, EntityImportOption.Enable);
+                if (!(allowUndatedPreview && distributionDate?.NeedsExplicitDate == true && settings.MetDate is null))
+                    DistributionDates.Apply(generated, encounter, settings, distributionDate);
                 generated.RefreshChecksum();
                 var legality = new LegalityAnalysis(generated);
-                if (generated.Valid && legality.Valid && settings.Matches(generated)) { accepted = generated; break; }
-                failure = !settings.Matches(generated) ? "생성 결과가 지정 조건과 다릅니다. 조건은 임의로 완화하지 않았습니다." : legality.Report();
+                if (generated.Valid && legality.Valid && legality.Info.FrameMatches && legality.Info.PIDIVMatches && settings.Matches(generated) && (allowUndatedPreview && distributionDate?.NeedsExplicitDate == true && settings.MetDate is null || DistributionDates.Matches(generated, settings, distributionDate))) { accepted = generated; break; }
+                failure = !settings.Matches(generated) ? "생성 결과가 지정 조건과 다릅니다. 조건은 임의로 완화하지 않았습니다."
+                    : !legality.Info.FrameMatches || !legality.Info.PIDIVMatches ? "PID·개체값 또는 야생 조우 프레임을 검증하지 못했습니다. 원본 시드 X가 표시되는 결과는 채택하지 않습니다."
+                    : !DistributionDates.Matches(generated, settings, distributionDate) ? "만난 날짜 적용 결과가 요청과 다릅니다." : legality.Report();
             }
             if (accepted is null) throw new InvalidOperationException($"{route.Species} ({route.Version}) 적법성 검사 실패:\n{failure}");
             int index = empty[i];
             staged.SetBoxSlotAtIndex(accepted, index, new(EntityImportOption.Disable, EntityImportOption.Enable, EntityImportOption.Enable));
             var stored = staged.GetBoxSlotAtIndex(index);
-            Validate(stored, route, settings);
+            Validate(stored, route, settings, allowUndatedPreview);
             slots.Add(new(route, index / staged.BoxSlotCount, index % staged.BoxSlotCount, stored, settings, generator, generationSeed));
         }
         token.ThrowIfCancellationRequested();
@@ -182,22 +188,23 @@ public sealed class InjectionPlan
         for (int i = 0; i < original.SlotCount; i++)
             if (!destinations.Contains(i) && !SlotBytes(original.GetBoxSlotAtIndex(i)).SequenceEqual(SlotBytes(parsed.GetBoxSlotAtIndex(i))))
                 throw new InvalidOperationException($"기존 슬롯 {i + 1} 보존 검사 실패. 반영하지 않습니다.");
-        foreach (var slot in slots) Validate(parsed.GetBoxSlotAtIndex(slot.Box, slot.Slot), slot.Route, slot.Settings);
+        foreach (var slot in slots) Validate(parsed.GetBoxSlotAtIndex(slot.Box, slot.Slot), slot.Route, slot.Settings, allowUndatedPreview);
         return new(live, original, staged, slots);
     }
 
     private static byte[] SlotBytes(PKM pk) => pk.Data[..pk.SIZE_STORED].ToArray()
         .Concat(pk.NicknameTrash.ToArray()).Concat(pk.OriginalTrainerTrash.ToArray()).ToArray();
-    private static void Validate(PKM pk, Route route, GenerationSettings? settings = null)
+    private static void Validate(PKM pk, Route route, GenerationSettings? settings = null, bool allowUndatedPreview = false)
     {
-        if (pk.Species != route.Species || pk.Form != route.Form || !pk.Valid || settings is not null && !settings.Matches(pk))
+        if (pk.Species != route.Species || pk.Form != route.Form || !pk.Valid || settings is not null && (!settings.Matches(pk) || !(allowUndatedPreview && settings.MetDate is null && DistributionCatalog.DateInfo(route)?.NeedsExplicitDate == true) && !DistributionDates.Matches(pk, settings, DistributionCatalog.DateInfo(route))))
             throw new InvalidOperationException("박스 재판독에서 개체 정보가 일치하지 않습니다.");
         var legality = new LegalityAnalysis(pk);
-        if (!legality.Valid) throw new InvalidOperationException($"박스 반영 후 적법성 실패:\n{legality.Report()}");
+        if (!legality.Valid || !legality.Info.FrameMatches || !legality.Info.PIDIVMatches) throw new InvalidOperationException($"박스 반영 후 적법성 또는 조우 프레임 검사 실패:\n{legality.Report()}");
     }
 
     public void Commit(SaveFile current)
     {
+        if (HasUnconfirmedDates) throw new InvalidOperationException("날짜가 미확정인 배포 개체가 있습니다. 요청 날짜를 입력하고 다시 검색한 뒤 반영하세요.");
         if (Committed) throw new InvalidOperationException("이미 반영한 계획입니다.");
         if (!ReferenceEquals(current, target) || !Fingerprint(current).SequenceEqual(beforeHash))
             throw new InvalidOperationException("미리보기 이후 세이브가 바뀌었습니다. 다시 미리보기를 만드세요.");

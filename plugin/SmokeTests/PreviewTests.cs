@@ -20,6 +20,8 @@ static class PreviewTests
         Check(Rejected(() => session.Confirm(requested)), "changed criteria cannot commit old result even before dirty notification");
         var genderEdit = new Dictionary<string, GenerationSettings> { [route.Id] = new(Gender: 1) };
         Check(Rejected(() => session.Confirm(genderEdit)), "gender change also invalidates previous preview");
+        var dateEdit = new Dictionary<string, GenerationSettings> { [route.Id] = new(MetDate: new(2010, 5, 1)) };
+        Check(Rejected(() => session.Confirm(dateEdit)), "date change also requires refreshed preview");
         var hash = InjectionPlan.Fingerprint(save);
         session.Invalidate();
         Check(Rejected(() => session.Confirm(defaults)), "cancelled or failed search leaves previous result blocked");

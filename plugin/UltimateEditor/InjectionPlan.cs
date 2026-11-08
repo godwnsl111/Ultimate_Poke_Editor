@@ -4,6 +4,7 @@ using PKHeX.Core;
 namespace UltimateEditor;
 
 public sealed record PlannedSlot(Route Route, int Box, int Slot, PKM Pokemon, GenerationSettings? Settings = null, string Generator = "PKHeX 기본", uint? Seed = null);
+public sealed record GenerationFailure(Route Route, GenerationSettings Settings, string Message);
 
 // Plans only modify private clones. Live writes happen in Commit, after a stale-state check.
 public sealed class InjectionPlan
@@ -15,12 +16,13 @@ public sealed class InjectionPlan
     private byte[]? committedHash;
     private readonly bool wasEdited;
     public IReadOnlyList<PlannedSlot> Slots { get; }
+    public IReadOnlyList<GenerationFailure> Failures { get; }
     public bool Committed { get; private set; }
     public bool HasUnconfirmedDates => Slots.Any(s => s.Settings?.MetDate is null && DistributionCatalog.DateInfo(s.Route)?.NeedsExplicitDate == true);
 
-    private InjectionPlan(SaveFile live, SaveFile original, SaveFile staged, IReadOnlyList<PlannedSlot> slots)
+    private InjectionPlan(SaveFile live, SaveFile original, SaveFile staged, IReadOnlyList<PlannedSlot> slots, IReadOnlyList<GenerationFailure> failures)
     {
-        target = live; before = original; prepared = staged; Slots = slots;
+        target = live; before = original; prepared = staged; Slots = slots; Failures = failures;
         beforeHash = Fingerprint(original); wasEdited = live.State.Edited;
     }
 
@@ -64,7 +66,7 @@ public sealed class InjectionPlan
 
     public static InjectionPlan Prepare(SaveFile live, GameVersion baseVersion, IReadOnlyList<Route> routes,
         IReadOnlyDictionary<GameVersion, TrainerProfile> trainers, int startBox, CancellationToken token = default,
-        SaveFile? snapshot = null, bool prerequisitesReviewed = false, IReadOnlyDictionary<string, byte>? tradeLevels = null, IReadOnlyDictionary<GameVersion, TrainerProfile>? linkedTrainers = null, IReadOnlyDictionary<string, GenerationSettings>? generationSettings = null, bool allowUndatedPreview = false)
+        SaveFile? snapshot = null, bool prerequisitesReviewed = false, IReadOnlyDictionary<string, byte>? tradeLevels = null, IReadOnlyDictionary<GameVersion, TrainerProfile>? linkedTrainers = null, IReadOnlyDictionary<string, GenerationSettings>? generationSettings = null, bool allowUndatedPreview = false, bool continueOnFailure = false)
     {
         if (routes.Count == 0) throw new ArgumentException("추가할 포켓몬을 선택하세요.");
         if (!GameProfile.ResolveCandidates(live.Version).Contains(baseVersion)) throw new ArgumentException("열린 세이브와 기본 버전이 다릅니다.");
@@ -90,14 +92,18 @@ public sealed class InjectionPlan
                 Region = tr.Region ?? 0, ConsoleRegion = tr.ConsoleRegion ?? 0 };
         }
         var slots = new List<PlannedSlot>();
+        var failures = new List<GenerationFailure>();
         for (int i = 0; i < routes.Count; i++)
         {
             token.ThrowIfCancellationRequested();
             var route = routes[i];
+            var settings = generationSettings is not null && generationSettings.TryGetValue(route.Id, out var configured) ? configured : new GenerationSettings();
+            try
+            {
             if (route.Kind is not (RouteKind.Wild or RouteKind.Gift or RouteKind.GiftEgg or RouteKind.Trade or RouteKind.Event or RouteKind.Distribution or RouteKind.Linked))
                 throw new ArgumentException("지원하지 않는 입수 경로입니다.");
-            if (route.NeedsReview && !prerequisitesReviewed)
-                throw new ArgumentException($"{route.Species}: 선행 조건을 확인해야 합니다. {route.Requirement}");
+            // Acquisition prerequisites are assumed satisfied; retain the legacy
+            // prerequisitesReviewed argument for caller compatibility.
             if (route.Form >= EncounterUtil.FormDynamic)
                 throw new ArgumentException($"{route.Species}: 동적 폼은 아직 주입할 수 없습니다.");
             var encounter = EncounterCatalog.GetTemplate(route);
@@ -118,10 +124,9 @@ public sealed class InjectionPlan
             if (route.Kind == RouteKind.Trade)
             {
                 if (tradeLevels is not null && tradeLevels.TryGetValue(route.Id, out var chosen)) tradeLevel = chosen;
-                else if (!route.TradeLevelKnown) throw new ArgumentException("이 NPC 교환은 교환 레벨을 직접 입력해야 합니다.");
+                else if (!route.TradeLevelKnown) tradeLevel = (byte)Math.Clamp(50, (int)route.MinLevel, route.MaxLevel);
                 if (tradeLevel < route.MinLevel || tradeLevel > route.MaxLevel) throw new ArgumentException("교환 레벨이 허용 범위 밖입니다.");
             }
-            var settings = generationSettings is not null && generationSettings.TryGetValue(route.Id, out var configured) ? configured : new GenerationSettings();
             settings.Validate();
             string generator = "PKHeX 기본"; uint? generationSeed = null;
             PKM? accepted = null;
@@ -136,6 +141,7 @@ public sealed class InjectionPlan
                     generated = result.Pokemon; generator = result.Method; generationSeed = result.Seed;
                 }
                 else generated = encounter.ConvertToPKM(creationTrainer, EncounterCriteria.Unrestricted);
+                GenerationEngine.NormalizeTradeBall(generated, encounter);
                 if (route.LinkedSource is "COLO" or "XD") generated = generated switch { CK3 ck => ck.ConvertToPK3(), XK3 xk => xk.ConvertToPK3(), _ => throw new InvalidOperationException("GC 원본 형식이 아닙니다.") };
                 if (route.LinkedSource == "DreamRadar")
                 {
@@ -173,23 +179,31 @@ public sealed class InjectionPlan
                     : !DistributionDates.Matches(generated, settings, distributionDate) ? "만난 날짜 적용 결과가 요청과 다릅니다." : legality.Report();
             }
             if (accepted is null) throw new InvalidOperationException($"{route.Species} ({route.Version}) 적법성 검사 실패:\n{failure}");
-            int index = empty[i];
-            staged.SetBoxSlotAtIndex(accepted, index, new(EntityImportOption.Disable, EntityImportOption.Enable, EntityImportOption.Enable));
-            var stored = staged.GetBoxSlotAtIndex(index);
+            int index = empty[slots.Count];
+            var candidateSave = CloneSave(staged);
+            candidateSave.SetBoxSlotAtIndex(accepted, index, new(EntityImportOption.Disable, EntityImportOption.Enable, EntityImportOption.Enable));
+            var stored = candidateSave.GetBoxSlotAtIndex(index);
             Validate(stored, route, settings, allowUndatedPreview);
+            staged = candidateSave;
             slots.Add(new(route, index / staged.BoxSlotCount, index % staged.BoxSlotCount, stored, settings, generator, generationSeed));
+            }
+            catch (Exception ex) when (continueOnFailure && ex is ArgumentException or InvalidOperationException or TimeoutException or NotSupportedException)
+            {
+                token.ThrowIfCancellationRequested();
+                failures.Add(new(route, settings, ex.Message));
+            }
         }
         token.ThrowIfCancellationRequested();
         // Serializing clones also validates game-specific checksums and split storage (notably Gen3).
         var serialized = staged.Write().ToArray();
         var parsed = SaveUtil.GetSaveFile(serialized) ?? throw new InvalidOperationException("수정 복제본 재판독에 실패했습니다.");
         if (!parsed.ChecksumsValid) throw new InvalidOperationException("수정 복제본 체크섬 검사 실패.");
-        var destinations = empty.Take(routes.Count).ToHashSet();
+        var destinations = empty.Take(slots.Count).ToHashSet();
         for (int i = 0; i < original.SlotCount; i++)
             if (!destinations.Contains(i) && !SlotBytes(original.GetBoxSlotAtIndex(i)).SequenceEqual(SlotBytes(parsed.GetBoxSlotAtIndex(i))))
                 throw new InvalidOperationException($"기존 슬롯 {i + 1} 보존 검사 실패. 반영하지 않습니다.");
         foreach (var slot in slots) Validate(parsed.GetBoxSlotAtIndex(slot.Box, slot.Slot), slot.Route, slot.Settings, allowUndatedPreview);
-        return new(live, original, staged, slots);
+        return new(live, original, staged, slots, failures);
     }
 
     private static byte[] SlotBytes(PKM pk) => pk.Data[..pk.SIZE_STORED].ToArray()
@@ -204,6 +218,7 @@ public sealed class InjectionPlan
 
     public void Commit(SaveFile current)
     {
+        if (Slots.Count == 0) throw new InvalidOperationException("반영할 검색 성공 개체가 없습니다.");
         if (HasUnconfirmedDates) throw new InvalidOperationException("날짜가 미확정인 배포 개체가 있습니다. 요청 날짜를 입력하고 다시 검색한 뒤 반영하세요.");
         if (Committed) throw new InvalidOperationException("이미 반영한 계획입니다.");
         if (!ReferenceEquals(current, target) || !Fingerprint(current).SequenceEqual(beforeHash))

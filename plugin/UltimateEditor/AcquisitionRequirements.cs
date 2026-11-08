@@ -33,7 +33,7 @@ public static class AcquisitionRequirements
                 byte minimum = known ? (byte)Math.Max(r.MinLevel, levels[outgoing]) : r.MinLevel;
                 string name = outgoing == 0 ? "NPC 입수 조건(요구 포켓몬/선물 조건)" : $"{(Species)outgoing} (#{outgoing})";
                 return r with { MinLevel = minimum, MaxLevel = profile.Generation <= 4 ? (byte)100 : r.MaxLevel, RequiredSpecies = outgoing, TradeLevelKnown = known,
-                    Requirement = $"{name}을 외부 교환·교배 없이 확보해야 합니다. " + (known ? $"출현/일반 레벨업 기준 최소 {minimum}레벨. 조건 확인 필요." : "최저 레벨 자동 판정 미완료: 교환 레벨을 입력하고 조건을 확인하세요.") };
+                    Requirement = $"{name} 확보 조건 충족 가정. " + (known ? $"출현/일반 레벨업 기준 최소 {minimum}레벨." : "교환 레벨 미지정 시 기본 50레벨 적용.") };
             }
             string requirement = EventText(version, r);
             return requirement.Length == 0 ? r : r with { RequiresEvent = true, Requirement = requirement };
@@ -68,7 +68,7 @@ public static class AcquisitionRequirements
         if (v == GameVersion.Pt && r.Species is 377 or 378 or 379) return "유적 포획: 해당 게임 대상 배포 레지기가스가 필요합니다.";
         if (v is GameVersion.D or GameVersion.P or GameVersion.Pt && r.Species == 486) return "레지락·레지아이스·레지스틸을 허용된 입수 경로로 확보해야 합니다.";
         if (v is GameVersion.D or GameVersion.P or GameVersion.Pt && r.Species == 442) return "쐐기돌과 지하통로 대화 조건을 충족해야 합니다.";
-        return r.RequiresEvent || r.Kind == RouteKind.Event ? "이벤트/배포 포획입니다. 해당 게임의 배포·입장·선행 개체 조건을 확인하세요. 세이브 진행 플래그는 변경하지 않습니다." : "";
+        return r.RequiresEvent || r.Kind == RouteKind.Event ? "이벤트/배포 포획입니다. 배포·입장·선행 개체 조건은 충족한 것으로 가정합니다." : "";
     }
 
     private static ushort RequiredTradeSpecies(GameVersion v, ushort s)

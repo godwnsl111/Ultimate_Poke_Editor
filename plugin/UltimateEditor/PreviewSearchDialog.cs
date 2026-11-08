@@ -6,7 +6,7 @@ internal static class PreviewSearchDialog
 {
     private sealed record Choice(int Value, string Text);
     public static InjectionPlan? Show(IWin32Window owner, InjectionPlan initial,
-        Func<IWin32Window, IReadOnlyDictionary<string, GenerationSettings>, InjectionPlan?> search)
+        Func<IWin32Window, IReadOnlyDictionary<string, GenerationSettings>, InjectionPlan?> search, DateOnly? commonMetDate = null)
     {
         using var dialog = new Form { Text = "주입 미리보기 — 조건 지정·검색", Width = 1370, Height = 780,
             StartPosition = FormStartPosition.CenterParent, MinimumSize = new Size(960, 600) };
@@ -27,6 +27,7 @@ internal static class PreviewSearchDialog
         ChoiceColumn("Shiny", "요청 이로치", [new(-1, "무관"), new(0, "아니오"), new(1, "예")]);
         ChoiceColumn("Nature", "요청 성격", new[] { new Choice(-1, "무관") }.Concat(GameInfo.Strings.natures.Select((n, i) => new Choice(i, n))).ToArray());
         TextColumn("MetDate", "요청 날짜 (자동/입력)", true);
+        if (commonMetDate is not null) conditions.Columns["MetDate"]!.ReadOnly = true;
         Choice[] ivChoices = [new(-1, "무관"), new(0, "Z(0)"), new(31, "V(31)")];
         string[] ivColumns = ["HP", "Attack", "Defense", "SpAttack", "SpDefense", "Speed"];
         string[] ivTitles = ["HP IV", "공격 IV", "방어 IV", "특공 IV", "특방 IV", "스피드 IV"];
@@ -34,31 +35,41 @@ internal static class PreviewSearchDialog
         ChoiceColumn("Ability", "요청 특성번호", [new(-1, "무관"), new(0, "1"), new(1, "2"), new(2, "4 (숨겨진)")]);
         TextColumn("Seconds", "검색 초", true);
         TextColumn("Period", "배포 허용기간"); TextColumn("CardDate", "카드 기록일"); TextColumn("DateSource", "날짜 근거");
-        foreach (var slot in initial.Slots)
+        TextColumn("SearchStatus", "검색 상태 / 실패 이유");
+        var initialRows = initial.Slots.Select(s => (s.Route, Settings: s.Settings ?? new GenerationSettings(), Name: s.Pokemon.Nickname))
+            .Concat(initial.Failures.Select(f => (f.Route, f.Settings, Name: GameInfo.Strings.specieslist[f.Route.Species])));
+        foreach (var slot in initialRows)
         {
-            var s = slot.Settings ?? new GenerationSettings();
+            var s = slot.Settings;
             var dates = DistributionCatalog.DateInfo(slot.Route);
-            int index = conditions.Rows.Add(slot.Route.Species, slot.Pokemon.Nickname, slot.Route.Version,
+            int index = conditions.Rows.Add(slot.Route.Species, slot.Name, slot.Route.Version,
                 s.Gender, s.Shiny, s.Nature, s.MetDate?.ToString("yyyy-MM-dd") ?? "자동", s.HP, s.Attack, s.Defense, s.SpAttack, s.SpDefense, s.Speed, s.Ability, s.TimeoutSeconds, dates?.Period ?? "", dates?.CardDateText ?? "", dates?.Source ?? "");
             conditions.Rows[index].Tag = slot.Route;
         }
         var results = new DataGridView { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false,
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells };
+        var failures = new DataGridView { Dock = DockStyle.Bottom, Height = 125, ReadOnly = true, AllowUserToAddRows = false,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells, BackgroundColor = Color.MistyRose, Visible = false };
         var status = new Label { Dock = DockStyle.Top, Height = 62, Padding = new Padding(8) };
         var resultLabel = new Label { Dock = DockStyle.Top, Height = 26, Text = "검증된 검색 결과", Padding = new Padding(5) };
         var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal };
         split.Panel1.Controls.Add(conditions);
         split.Panel1.Controls.Add(new Label { Dock = DockStyle.Top, Height = 27, Text = "검색 조건 — 날짜는 자동 또는 yyyy-MM-dd (카드 기록일과 공식 배포 기간은 구분)", Padding = new Padding(5) });
-        split.Panel2.Controls.Add(results); split.Panel2.Controls.Add(resultLabel);
+        split.Panel2.Controls.Add(results); split.Panel2.Controls.Add(failures); split.Panel2.Controls.Add(resultLabel);
         var dateBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 68, Padding = new Padding(6), WrapContents = true };
         dateBar.Controls.Add(new Label { Text = "만난 날짜 직접 입력", AutoSize = true, Padding = new Padding(0, 6, 0, 0) });
         var dateInput = new TextBox { Width = 125, PlaceholderText = "yyyy-MM-dd", MaxLength = 10, AccessibleName = "만난 날짜 직접 입력" };
         var setDate = new Button { Text = "선택 행에 날짜 적용", AutoSize = true };
         var allDates = new Button { Text = "전체 행에 날짜 적용", AutoSize = true };
         var autoDate = new Button { Text = "선택 행 날짜 자동", AutoSize = true };
+        if (commonMetDate is { } fixedDate)
+        {
+            dateInput.Text = fixedDate.ToString("yyyy-MM-dd");
+            dateInput.Enabled = setDate.Enabled = allDates.Enabled = autoDate.Enabled = false;
+        }
         dateBar.Controls.AddRange([dateInput, setDate, allDates, autoDate]);
         dateBar.SetFlowBreak(autoDate, true);
-        dateBar.Controls.Add(new Label { Text = "위 조건 표에서 행 선택 → 날짜 입력 → 적용 → 하단 '지정 조건으로 검색'. 날짜는 yyyy-MM-dd 형식입니다.", AutoSize = true });
+        dateBar.Controls.Add(new Label { Text = commonMetDate is null ? "위 조건 표에서 행 선택 → 날짜 입력 → 적용 → 하단 '지정 조건으로 검색'. 날짜는 yyyy-MM-dd 형식입니다." : "목록 화면에서 지정한 전체 공통 날짜를 적용 중입니다. 변경하려면 목록 화면으로 돌아가세요.", AutoSize = true });
         dialog.Controls.Add(split); dialog.Controls.Add(dateBar); dialog.Controls.Add(status);
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 46, FlowDirection = FlowDirection.RightToLeft };
         var apply = new Button { Text = "열린 세이브에 반영", AutoSize = true };
@@ -70,6 +81,19 @@ internal static class PreviewSearchDialog
 
         void DisplayResults()
         {
+            var failed = session.Plan.Failures.ToDictionary(f => f.Route.Id);
+            failures.Visible = failed.Count > 0;
+            failures.DataSource = session.Plan.Failures.Select(f => new {
+                번호 = f.Route.Species, 이름 = GameInfo.Strings.specieslist[f.Route.Species], 게임 = f.Route.Version,
+                경로 = f.Route.Kind.ToString(), 실패이유 = f.Message }).ToArray();
+            foreach (DataGridViewRow row in conditions.Rows)
+            {
+                var route = (Route)row.Tag!;
+                bool isFailed = failed.TryGetValue(route.Id, out var failure);
+                row.Cells["SearchStatus"].Value = isFailed ? failure!.Message : "성공";
+                row.ErrorText = isFailed ? failure!.Message : "";
+                row.DefaultCellStyle.BackColor = isFailed ? Color.MistyRose : SystemColors.Window;
+            }
             results.DataSource = session.Plan.Slots.Select(s => new {
                 박스 = s.Box + 1, 슬롯 = s.Slot + 1, 번호 = s.Pokemon.Species, 이름 = s.Pokemon.Nickname,
                 만난날짜 = s.Settings?.MetDate is null && DistributionCatalog.DateInfo(s.Route)?.NeedsExplicitDate == true ? "미정 (날짜 입력 필요)" : s.Pokemon.MetDate?.ToString("yyyy-MM-dd") ?? "", 알수령일 = s.Pokemon.EggMetDate?.ToString("yyyy-MM-dd") ?? "",
@@ -84,9 +108,11 @@ internal static class PreviewSearchDialog
                 배포명 = s.Route.Kind == RouteKind.Distribution ? s.Route.Description : "",
                 OT = s.Pokemon.OriginalTrainerName, TID = s.Pokemon.GetDisplayTID(), SID = s.Pokemon.GetDisplaySID(),
                 검사 = "적법성·체크섬·기존 슬롯 보존 통과" }).ToArray();
-            status.Text = $"{session.Plan.Slots.Count}마리 / 위 표에서 성별·성격·IV·이로치·특성번호를 지정하고 ‘지정 조건으로 검색’을 누르세요.\n" +
+            status.Text = $"성공 {session.Plan.Slots.Count}마리 / 실패 {session.Plan.Failures.Count}마리. 실패한 행의 ‘검색 상태 / 실패 이유’를 확인하세요.\n" +
                 "아래 표는 실제 생성 결과입니다. 조건 변경 후 다시 검색해야 반영할 수 있습니다. 파일 저장은 PKHeX에서 수행하세요.";
-            status.ForeColor = SystemColors.ControlText; apply.Enabled = !session.RequiresSearch;
+            status.ForeColor = session.Plan.Failures.Count > 0 ? Color.DarkRed : SystemColors.ControlText;
+            apply.Text = $"성공한 {session.Plan.Slots.Count}마리 세이브에 반영";
+            apply.Enabled = !session.RequiresSearch && session.Plan.Slots.Count > 0;
             if (session.Plan.HasUnconfirmedDates)
             {
                 status.Text = "원본 날짜가 없는 배포 카드가 있습니다. 오늘 날짜는 배포일로 사용하지 않습니다.\n위쪽 '만난 날짜 직접 입력' 칸에 수령일 입력 → 적용 → 검색 순서로 진행하세요. 날짜가 미정인 결과는 주입할 수 없습니다.";
@@ -126,7 +152,7 @@ internal static class PreviewSearchDialog
         GenerationSettings ReadRow(DataGridViewRow row)
         {
             var s = new GenerationSettings(Value(row, "Shiny"), Value(row, "Nature"), Value(row, "Ability"),
-                Value(row, "HP"), Value(row, "Attack"), Value(row, "Defense"), Value(row, "SpAttack"), Value(row, "SpDefense"), Value(row, "Speed"), Value(row, "Seconds"), Value(row, "Gender"), DistributionDates.ParseInput(row.Cells["MetDate"].Value?.ToString()));
+                Value(row, "HP"), Value(row, "Attack"), Value(row, "Defense"), Value(row, "SpAttack"), Value(row, "SpDefense"), Value(row, "Speed"), Value(row, "Seconds"), Value(row, "Gender"), commonMetDate ?? DistributionDates.ParseInput(row.Cells["MetDate"].Value?.ToString()));
             s.Validate(); return s;
         }
         Dictionary<string, GenerationSettings> ReadAll()
@@ -139,7 +165,9 @@ internal static class PreviewSearchDialog
             Invalidate();
             if (conditions.CurrentCell is DataGridViewComboBoxCell) conditions.CommitEdit(DataGridViewDataErrorContexts.Commit);
         };
-        conditions.CellValueChanged += (_, e) => { if (e.RowIndex >= 0) Invalidate(); };
+        conditions.CellValueChanged += (_, e) => {
+            if (e.RowIndex >= 0 && conditions.Columns[e.ColumnIndex].Name != "SearchStatus") Invalidate();
+        };
         conditions.DataError += (_, e) => { e.ThrowException = false; Invalidate(); if (e.RowIndex >= 0) conditions.Rows[e.RowIndex].ErrorText = "검색 조건을 확인하세요. 검색 초는 1~120 사이 정수입니다."; };
         conditions.CellValidating += (_, e) => {
             if (e.ColumnIndex == conditions.Columns["MetDate"]!.Index)
@@ -170,6 +198,7 @@ internal static class PreviewSearchDialog
                 if (selected.Length == 0) throw new ArgumentException("조건을 바꿀 행을 선택하세요. Ctrl/Shift로 여러 행을 선택할 수 있습니다.");
                 var updated = GenerationDialog.Show(dialog, selected.Length, ReadRow(selected[0]), selected.Length == 1 ? (Route)selected[0].Tag! : null);
                 if (updated is null) return;
+                if (commonMetDate is not null) updated = updated with { MetDate = commonMetDate };
                 foreach (var row in selected)
                 {
                     row.Cells["Gender"].Value = updated.Gender; row.Cells["Shiny"].Value = updated.Shiny; row.Cells["Nature"].Value = updated.Nature; row.Cells["Ability"].Value = updated.Ability;

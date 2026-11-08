@@ -31,6 +31,6 @@ internal static class InjectionDialogs
     }
 
     public static InjectionPlan? Confirm(IWin32Window owner, InjectionPlan plan,
-        Func<IWin32Window, IReadOnlyDictionary<string, GenerationSettings>, InjectionPlan?> search) =>
-        PreviewSearchDialog.Show(owner, plan, search);
+        Func<IWin32Window, IReadOnlyDictionary<string, GenerationSettings>, InjectionPlan?> search, DateOnly? commonMetDate = null) =>
+        PreviewSearchDialog.Show(owner, plan, search, commonMetDate);
 }

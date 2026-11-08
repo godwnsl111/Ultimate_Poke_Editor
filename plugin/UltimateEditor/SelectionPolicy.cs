@@ -9,7 +9,7 @@ public sealed record Route(
     string DistributionKey = "", string Requirement = "", ushort RequiredSpecies = 0, bool TradeLevelKnown = false, string LinkedSource = "")
 {
     public string LocationName => LocationNames.Get(this);
-    public bool NeedsReview => Kind is RouteKind.Trade or RouteKind.Linked;
+    public bool NeedsReview => false; // All acquisition prerequisites are assumed satisfied.
 }
 
 public sealed record Exclusion(Route Route, string Reason);

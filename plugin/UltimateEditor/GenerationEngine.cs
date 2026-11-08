@@ -84,6 +84,7 @@ public static class GenerationEngine
         for (int i = 0; i < 32; i++)
         {
             var pk = encounter.ConvertToPKM(info, settings.Criteria);
+            NormalizeTradeBall(pk, encounter);
             CheckTrainer(pk, encounter, route, info);
             if (pk is CK3 or XK3)
             {
@@ -99,6 +100,13 @@ public static class GenerationEngine
     {
         if (route.Kind is RouteKind.Distribution or RouteKind.Trade || encounter is IFixedTrainer { IsFixedTrainer: true }) return;
         if (pk.ID32 != trainer.ID32) throw new ArgumentException("이 경로의 RNG 생성기가 원본 TID/SID와 다른 결과를 반환했습니다. 원본 ID를 변경하는 결과는 채택하지 않습니다. 조건을 조정하세요.");
+    }
+    public static void NormalizeTradeBall(PKM pk, IEncounterable encounter)
+    {
+        // The pinned converter assigns Ball before Version, leaving HG/SS's
+        // extended ball byte unset. Reapply the encounter's fixed ball after it.
+        if (pk is PK4 { HGSS: true } && encounter is EncounterTrade4PID trade)
+            pk.Ball = (byte)trade.FixedBall;
     }
     private static IEnumerable<int[]> CompleteIVs(int[] input)
     {

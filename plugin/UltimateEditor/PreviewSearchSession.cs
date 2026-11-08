@@ -5,20 +5,22 @@ public sealed class PreviewSearchSession(InjectionPlan initial)
 {
     public InjectionPlan Plan { get; private set; } = initial;
     public bool RequiresSearch { get; private set; } = initial.HasUnconfirmedDates;
-    private readonly string[] routes = initial.Slots.Select(s => s.Route.Id).ToArray();
+    private readonly HashSet<string> routes = initial.Slots.Select(s => s.Route.Id).Concat(initial.Failures.Select(f => f.Route.Id)).ToHashSet();
     public void Invalidate() => RequiresSearch = true;
     private static bool Matches(InjectionPlan plan, IReadOnlyDictionary<string, GenerationSettings> settings) =>
-        plan.Slots.All(s => settings.TryGetValue(s.Route.Id, out var requested) && requested == (s.Settings ?? new GenerationSettings()));
+        plan.Slots.All(s => settings.TryGetValue(s.Route.Id, out var requested) && requested == (s.Settings ?? new GenerationSettings())) &&
+        plan.Failures.All(f => settings.TryGetValue(f.Route.Id, out var requested) && requested == f.Settings);
     public void Accept(InjectionPlan result, IReadOnlyDictionary<string, GenerationSettings> requested)
     {
         Invalidate();
-        if (result.HasUnconfirmedDates || !routes.SequenceEqual(result.Slots.Select(s => s.Route.Id)) || !Matches(result, requested))
+        var ids = result.Slots.Select(s => s.Route.Id).Concat(result.Failures.Select(f => f.Route.Id)).ToArray();
+        if (result.HasUnconfirmedDates || ids.Length != routes.Count || !routes.SetEquals(ids) || !Matches(result, requested))
             throw new InvalidOperationException("다시 검색한 결과가 미리보기의 경로·조건과 다릅니다.");
         Plan = result; RequiresSearch = false;
     }
     public InjectionPlan Confirm(IReadOnlyDictionary<string, GenerationSettings> requested)
     {
-        if (RequiresSearch || Plan.HasUnconfirmedDates || !Matches(Plan, requested))
+        if (RequiresSearch || Plan.Slots.Count == 0 || Plan.HasUnconfirmedDates || !Matches(Plan, requested))
             throw new InvalidOperationException("변경한 조건으로 먼저 검색하세요. 이전 검색 결과는 반영하지 않습니다.");
         return Plan;
     }

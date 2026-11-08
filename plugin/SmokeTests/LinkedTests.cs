@@ -28,7 +28,7 @@ static class LinkedTests
                 {
                     if (route.LinkedSource == "COLO") trainers[GameVersion.COLO] = new("COLO", route.Location == 128 ? "コロ" : "COLO", 12345, 54321, 0, route.Location == 128 ? 1 : 2);
                     var plan = InjectionPlan.Prepare(save, GameVersion.E, [route], new Dictionary<GameVersion, TrainerProfile>(), 0,
-                        prerequisitesReviewed: true, linkedTrainers: trainers);
+                        linkedTrainers: trainers);
                     var pk = plan.Slots.Single().Pokemon;
                     Check(pk is PK3 && new LegalityAnalysis(pk).Valid, "GC native transfer legal " + route.Species + " " + route.LinkedSource);
                     if (route.Species == 250) Check(pk.OriginalTrainerName == "MATTLE" && pk.TID16 == 10048, "MATTLE fixed trainer preserved");
@@ -43,7 +43,7 @@ static class LinkedTests
                     var clone = (SAV5B2W2)InjectionPlan.CloneSave(b2w2); clone.Misc.Badges = badgeMask;
                     foreach (var route in LinkedCatalog.Build(clone.Version))
                     {
-                        var plan = InjectionPlan.Prepare(clone, clone.Version, [route], new Dictionary<GameVersion, TrainerProfile>(), 0, prerequisitesReviewed: true);
+                        var plan = InjectionPlan.Prepare(clone, clone.Version, [route], new Dictionary<GameVersion, TrainerProfile>(), 0);
                         var pk = plan.Slots.Single().Pokemon;
                         var level = badgeMask == 0 ? 5 : ((System.Numerics.BitOperations.PopCount((uint)badgeMask) + 1) / 2) * 10;
                         Check(pk.MetLevel == level && !pk.IsShiny && pk.Ball == (byte)Ball.Dream && pk.ID32 == clone.ID32,

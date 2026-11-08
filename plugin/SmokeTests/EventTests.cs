@@ -18,11 +18,8 @@ internal static class EventTests
             var trade = EncounterCatalog.Build(version).Selected.First(r => r.Kind == RouteKind.Trade && r.Species == species);
             Check(trade.TradeLevelKnown && trade.MinLevel > 1, "NPC trade minimum excludes breeding-only level");
             var hash = InjectionPlan.Fingerprint(work);
-            bool rejected = false;
-            try { InjectionPlan.Prepare(work, version, [trade], new Dictionary<GameVersion, TrainerProfile>(), 0); }
-            catch (ArgumentException) { rejected = true; }
-            Check(rejected && hash.SequenceEqual(InjectionPlan.Fingerprint(work)), "NPC prerequisites require explicit review");
-            var plan = InjectionPlan.Prepare(work, version, [trade], new Dictionary<GameVersion, TrainerProfile>(), 0, prerequisitesReviewed: true);
+            var plan = InjectionPlan.Prepare(work, version, [trade], new Dictionary<GameVersion, TrainerProfile>(), 0);
+            Check(!trade.NeedsReview && hash.SequenceEqual(InjectionPlan.Fingerprint(work)), "NPC prerequisites assumed satisfied without confirmation");
             var pk = plan.Slots.Single().Pokemon;
             var template = EncounterCatalog.GetTemplate(trade);
             Check(pk.CurrentLevel == trade.MinLevel && pk.OriginalTrainerName != save.OT, "NPC fixed trainer and corrected level retained");

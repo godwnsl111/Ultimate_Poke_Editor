@@ -66,20 +66,52 @@ public sealed class Plugin : IPlugin
             DataGridView? selectedGrid = null;
             InjectionPlan? lastPlan = null;
             var generationOptions = new Dictionary<string, GenerationSettings>();
+            var checkedRoutes = new HashSet<string>();
+            var savedTradeLevels = new Dictionary<string, string>();
+            var listOptions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 76, Padding = new Padding(6) };
+            var routeFilter = new ComboBox { Width = 180, DropDownStyle = ComboBoxStyle.DropDownList };
+            RouteKind?[] routeKinds = [null, RouteKind.Wild, RouteKind.Gift, RouteKind.GiftEgg, RouteKind.Trade, RouteKind.Event, RouteKind.Distribution, RouteKind.Linked];
+            routeFilter.Items.AddRange(["모든 경로", "야생 포획", "게임 내 선물", "선물 알", "NPC 교환", "이벤트 포획", "직접 배포", "연동 게임"]);
+            routeFilter.SelectedIndex = 0;
+            var routeText = new TextBox { Width = 220, PlaceholderText = "장소·방법·배포명 검색" };
+            listOptions.Controls.AddRange([new Label { Text = "경로 필터", AutoSize = true, Padding = new Padding(0, 5, 0, 0) }, routeFilter, routeText]);
+            var commonDate = new CheckBox { Text = "전체 공통 만난 날짜", AutoSize = true };
+            var commonDateInput = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd", Width = 125,
+                MinDate = new DateTime(2000, 1, 1), MaxDate = new DateTime(2099, 12, 31), Enabled = false };
+            if (save.Generation < 4) { commonDate.Enabled = false; commonDate.Text = "이 세대는 만난 날짜 없음"; }
+            listOptions.Controls.AddRange([commonDate, commonDateInput]);
+            listOptions.SetFlowBreak(commonDateInput, true);
+            listOptions.Controls.Add(new Label { Text = "공통 날짜를 켜면 모든 경로와 조건 검색에 적용합니다. 경로 필터를 바꿔도 체크한 항목은 유지됩니다.", AutoSize = true });
+            GenerationSettings EffectiveSettings(GenerationSettings settings) => commonDate.Checked
+                ? settings with { MetDate = DateOnly.FromDateTime(commonDateInput.Value) } : settings;
+            void CaptureSelection()
+            {
+                if (selectedGrid is null || selectedGrid.IsDisposed) return;
+                selectedGrid.EndEdit();
+                foreach (DataGridViewRow row in selectedGrid.Rows)
+                {
+                    string id = row.Cells["Id"].Value!.ToString()!;
+                    if (row.Cells["추가"].Value is true) checkedRoutes.Add(id); else checkedRoutes.Remove(id);
+                    savedTradeLevels[id] = row.Cells["교환레벨"].Value?.ToString() ?? "";
+                }
+            }
             var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 75 };
             var selectAll = new Button { Text = "가능 항목 선택 (종/폼당 1)", AutoSize = true };
             var clear = new Button { Text = "선택 해제", AutoSize = true };
             var preview = new Button { Text = "선택 개체 미리보기·조건 검색", AutoSize = true };
             var undo = new Button { Text = "이번 주입 취소", AutoSize = true, Enabled = false };
             var configure = new Button { Text = "선택 개체 생성조건", AutoSize = true };
-            var reviewed = new CheckBox { Text = "교환·연동 선행 조건 확인", AutoSize = true };
-            actions.Controls.AddRange([selectAll, clear, configure, preview, undo, reviewed]);
+            actions.Controls.AddRange([selectAll, clear, configure, preview, undo]);
             void RefreshReport()
             {
-                reviewed.Checked = false;
+                CaptureSelection();
                 int ReceivingLanguage(Route r) => r.Version == version.ToString() ? save.Language : trainerInputs[Enum.Parse<GameVersion>(r.Version)].SelectedLanguage;
                 bool VisibleRoute(Route r)
                 {
+                    if (routeKinds[routeFilter.SelectedIndex] is { } kind && r.Kind != kind) return false;
+                    string query = routeText.Text.Trim();
+                    string linkedName = r.LinkedSource == "DreamRadar" ? "드림 AR 서처 드림레이더 Dream Radar" : r.LinkedSource;
+                    if (query.Length > 0 && !($"{r.LocationName} {r.Method} {r.Description} {r.Version} {linkedName}").Contains(query, StringComparison.OrdinalIgnoreCase)) return false;
                     if (r.Kind != RouteKind.Distribution) return true;
                     if (!showDistributions.Checked) return false;
                     int filter = distributionLanguages[distributionLanguage.SelectedIndex];
@@ -91,7 +123,7 @@ public sealed class Plugin : IPlugin
                 info.Text = $"게임: {GameProfile.DisplayName(version)}   트레이너: {save.OT}   TID: {save.GetDisplayTID()}   SID: {save.GetDisplaySID()}\n" +
                 $"표시 {visibleRoutes.Length}개 경로 / {visibleRoutes.Select(r => r.Species).Distinct().Count()}종. " +
                 "교배 제외 · 야생 최저 레벨 · 야생 미진화체 우선\n" +
-                "이벤트 포획은 선행 조건 확인 없이 선택 가능. 직접 배포는 수령 언어별 표시·카드별 중복 가능. 동적 폼 미지원. 파일 저장은 PKHeX에서 수행하세요.";
+                "모든 입수 선행 조건은 충족한 것으로 가정합니다. 직접 배포는 수령 언어별 표시·카드별 중복 가능. 파일 저장은 PKHeX에서 수행하세요.";
             while (tabs.TabPages.Count > 0) { var page = tabs.TabPages[0]; tabs.TabPages.Remove(page); page.Dispose(); }
             var selected = visibleRoutes.Select(r => new {
                 번호 = r.Species, 이름 = ((Species)r.Species).ToString(), 경로 = r.Kind.ToString(),
@@ -99,7 +131,7 @@ public sealed class Plugin : IPlugin
                 주입지원 = InjectionDialogs.IsSupported(r) && AcquisitionRequirements.LanguageIssue(r, ReceivingLanguage(r)) is null,
                 입수언어안내 = AcquisitionRequirements.LanguageIssue(r, ReceivingLanguage(r)) ?? "",
                 배포명 = r.Kind == RouteKind.Distribution ? r.Description : "", 배포수령언어 = DistributionCatalog.ReceiverLanguageLabel(r), 배포허용기간 = DistributionCatalog.DateInfo(r)?.Period ?? "",
-                카드기록일 = DistributionCatalog.DateInfo(r)?.CardDateText ?? "", 자동적용날짜 = DistributionCatalog.DateInfo(r)?.SuggestedText ?? "", 날짜근거 = DistributionCatalog.DateInfo(r)?.Source ?? "", 선행조건 = r.Requirement,
+                카드기록일 = DistributionCatalog.DateInfo(r)?.CardDateText ?? "", 자동적용날짜 = DistributionCatalog.DateInfo(r)?.SuggestedText ?? "", 날짜근거 = DistributionCatalog.DateInfo(r)?.Source ?? "", 입수조건_충족가정 = r.Requirement,
                 최저레벨 = r.MinLevel, 최고레벨 = r.MaxLevel, 장소 = r.LocationName, 장소ID = r.Location,
                 알수령장소ID = r.EggLocation,
                 방법 = r.Method, 이벤트필요 = r.RequiresEvent, r.Id }).ToArray();
@@ -109,14 +141,19 @@ public sealed class Plugin : IPlugin
             selectedGrid.Columns.Insert(0, new DataGridViewTextBoxColumn { Name = "생성조건", HeaderText = "생성조건", ReadOnly = true });
             selectedGrid.Columns.Insert(0, new DataGridViewCheckBoxColumn { Name = "추가", HeaderText = "추가", ReadOnly = false });
             selectedGrid.Columns.Insert(1, new DataGridViewTextBoxColumn { Name = "교환레벨", HeaderText = "교환 레벨", ReadOnly = false });
-            selectedGrid.DataBindingComplete += (_, _) => {
+            void FillRows()
+            {
                 foreach (DataGridViewRow row in selectedGrid.Rows)
                 {
                     var route = report.Selected.Single(r => r.Id == row.Cells["Id"].Value?.ToString());
-                    if (route.Kind == RouteKind.Trade && route.TradeLevelKnown) row.Cells["교환레벨"].Value = route.MinLevel;
-                    row.Cells["생성조건"].Value = generationOptions.TryGetValue(route.Id, out var options) ? options.Summary : "기본값";
+                    row.Cells["추가"].Value = checkedRoutes.Contains(route.Id);
+                    if (route.Kind == RouteKind.Trade) row.Cells["교환레벨"].Value = savedTradeLevels.TryGetValue(route.Id, out var text) && !string.IsNullOrWhiteSpace(text)
+                        ? text : route.TradeLevelKnown ? route.MinLevel : Math.Clamp(50, (int)route.MinLevel, route.MaxLevel);
+                    row.Cells["생성조건"].Value = EffectiveSettings(generationOptions.GetValueOrDefault(route.Id) ?? new GenerationSettings()).Summary;
                 }
-            };
+            }
+            selectedGrid.DataBindingComplete += (_, _) => FillRows();
+            FillRows();
             selectedGrid.CellBeginEdit += (_, e) => {
                 var id = selectedGrid.Rows[e.RowIndex].Cells["Id"].Value?.ToString();
                 var route = report.Selected.Single(r => r.Id == id);
@@ -152,15 +189,16 @@ public sealed class Plugin : IPlugin
                 }
             }
             selectAll.Click += (_, _) => Mark(true);
-            clear.Click += (_, _) => Mark(false);
+            clear.Click += (_, _) => { checkedRoutes.Clear(); Mark(false); };
             configure.Click += (_, _) => {
                 try {
                     selectedGrid!.EndEdit();
                     var rows = selectedGrid.Rows.Cast<DataGridViewRow>().Where(r => r.Cells["추가"].Value is true).ToArray();
                     if (rows.Length == 0) throw new ArgumentException("조건을 지정할 개체의 추가 체크박스를 선택하세요.");
                     string firstId = rows[0].Cells["Id"].Value!.ToString()!;
-                    var options = GenerationDialog.Show(window, rows.Length, generationOptions.GetValueOrDefault(firstId) ?? new GenerationSettings(), rows.Length == 1 ? report.Selected.Single(r => r.Id == firstId) : null);
+                    var options = GenerationDialog.Show(window, rows.Length, EffectiveSettings(generationOptions.GetValueOrDefault(firstId) ?? new GenerationSettings()), rows.Length == 1 ? report.Selected.Single(r => r.Id == firstId) : null);
                     if (options is null) return;
+                    options = EffectiveSettings(options);
                     options.Validate();
                     foreach (var row in rows) { generationOptions[row.Cells["Id"].Value!.ToString()!] = options; row.Cells["생성조건"].Value = options.Summary; }
                 }
@@ -170,17 +208,14 @@ public sealed class Plugin : IPlugin
                 try
                 {
                     if (!ReferenceEquals(SaveFileEditor.SAV, save)) throw new InvalidOperationException("열린 세이브가 변경됐습니다. 창을 다시 여세요.");
-                    selectedGrid!.EndEdit();
-                    var ids = selectedGrid.Rows.Cast<DataGridViewRow>().Where(r => r.Cells["추가"].Value is true)
-                        .Select(r => r.Cells["Id"].Value?.ToString()).ToHashSet();
-                    var chosen = report.Selected.Where(r => ids.Contains(r.Id)).ToArray();
+                    CaptureSelection();
+                    var chosen = report.Selected.Where(r => checkedRoutes.Contains(r.Id)).ToArray();
                     if (chosen.Length == 0) throw new ArgumentException("추가할 포켓몬의 체크박스를 선택하세요.");
                     var tradeLevels = new Dictionary<string, byte>();
                     foreach (var route in chosen.Where(r => r.Kind == RouteKind.Trade))
                     {
-                        var row = selectedGrid.Rows.Cast<DataGridViewRow>().Single(r => r.Cells["Id"].Value?.ToString() == route.Id);
-                        var text = row.Cells["교환레벨"].Value?.ToString();
-                        if (string.IsNullOrWhiteSpace(text) && route.TradeLevelKnown) tradeLevels[route.Id] = route.MinLevel;
+                        var text = savedTradeLevels.GetValueOrDefault(route.Id);
+                        if (string.IsNullOrWhiteSpace(text)) tradeLevels[route.Id] = route.TradeLevelKnown ? route.MinLevel : (byte)Math.Clamp(50, (int)route.MinLevel, route.MaxLevel);
                         else if (byte.TryParse(text, out var level) && level >= route.MinLevel && level <= route.MaxLevel) tradeLevels[route.Id] = level;
                         else throw new ArgumentException($"{route.Species}: 교환 레벨을 {route.MinLevel}~{route.MaxLevel} 범위로 입력하세요.");
                     }
@@ -190,26 +225,30 @@ public sealed class Plugin : IPlugin
                         .ToDictionary(v => v, v => linkedInputs[v].Read(v));
                     var snapshot = InjectionPlan.CloneSave(save);
                     int startBox = SaveFileEditor.CurrentBox;
-                    var reviewConfirmed = reviewed.Checked;
-                    var plan = InjectionDialogs.Prepare(window, token => InjectionPlan.Prepare(save, version, chosen, trainerData, startBox, token, snapshot, reviewConfirmed, tradeLevels, linkedTrainerData, generationOptions, allowUndatedPreview: true));
+                    const bool reviewConfirmed = true;
+                    var effectiveOptions = chosen.ToDictionary(r => r.Id, r => EffectiveSettings(generationOptions.GetValueOrDefault(r.Id) ?? new GenerationSettings()));
+                    var plan = InjectionDialogs.Prepare(window, token => InjectionPlan.Prepare(save, version, chosen, trainerData, startBox, token, snapshot, reviewConfirmed, tradeLevels, linkedTrainerData, effectiveOptions, allowUndatedPreview: true, continueOnFailure: true));
                     if (plan is null) return;
                     var previewFingerprint = InjectionPlan.Fingerprint(snapshot);
                     var confirmed = InjectionDialogs.Confirm(window, plan, (owner, options) => {
                         if (!ReferenceEquals(SaveFileEditor.SAV, save) || !InjectionPlan.Fingerprint(save).SequenceEqual(previewFingerprint))
                             throw new InvalidOperationException("미리보기 중 열린 세이브가 변경됐습니다. 창을 닫고 새 미리보기를 만드세요.");
-                        var requested = options.ToDictionary(p => p.Key, p => p.Value);
+                        var requested = options.ToDictionary(p => p.Key, p => EffectiveSettings(p.Value));
                         foreach (var entry in requested) generationOptions[entry.Key] = entry.Value;
                         return InjectionDialogs.Prepare(owner, token => InjectionPlan.Prepare(save, version, chosen, trainerData, startBox,
-                            token, snapshot, reviewConfirmed, tradeLevels, linkedTrainerData, requested));
-                    });
-                    foreach (DataGridViewRow row in selectedGrid.Rows)
+                            token, snapshot, reviewConfirmed, tradeLevels, linkedTrainerData, requested, continueOnFailure: true));
+                    }, commonDate.Checked ? DateOnly.FromDateTime(commonDateInput.Value) : null);
+                    foreach (DataGridViewRow row in selectedGrid!.Rows)
                         if (generationOptions.TryGetValue(row.Cells["Id"].Value!.ToString()!, out var options)) row.Cells["생성조건"].Value = options.Summary;
                     if (confirmed is null) return;
                     plan = confirmed;
                     plan.Commit(SaveFileEditor.SAV);
                     lastPlan = plan; undo.Enabled = true;
                     SaveFileEditor.ReloadSlots();
-                    Mark(false);
+                    checkedRoutes.ExceptWith(plan.Slots.Select(s => s.Route.Id));
+                    foreach (DataGridViewRow row in selectedGrid.Rows)
+                        row.Cells["추가"].Value = checkedRoutes.Contains(row.Cells["Id"].Value!.ToString()!);
+                    RefreshReport();
                     MessageBox.Show(window, $"{plan.Slots.Count}마리를 열린 세이브에 반영했습니다. 파일 저장은 PKHeX에서 수행하세요.", Name);
                 }
                 catch (Exception ex) { MessageBox.Show(window, ex.Message, Name, MessageBoxButtons.OK, MessageBoxIcon.Warning); }
@@ -232,6 +271,14 @@ public sealed class Plugin : IPlugin
             mirrorChoice.CheckedChanged += (_, _) => Rebuild();
             showDistributions.CheckedChanged += (_, _) => RefreshReport();
             distributionLanguage.SelectedIndexChanged += (_, _) => RefreshReport();
+            routeFilter.SelectedIndexChanged += (_, _) => {
+                if (routeKinds[routeFilter.SelectedIndex] == RouteKind.Linked && linkedChoice.Enabled && !linkedChoice.Checked)
+                    linkedChoice.Checked = true; // CheckedChanged rebuilds the catalog before filtering.
+                else RefreshReport();
+            };
+            routeText.TextChanged += (_, _) => RefreshReport();
+            commonDate.CheckedChanged += (_, _) => { commonDateInput.Enabled = commonDate.Checked; RefreshReport(); };
+            commonDateInput.ValueChanged += (_, _) => { if (commonDate.Checked) RefreshReport(); };
             foreach (var input in trainerInputs.Values) input.LanguageChanged += (_, _) => RefreshReport();
             var export = new Button { Text = "검토 보고서 JSON 저장", Dock = DockStyle.Bottom, Height = 36 };
             export.Click += (_, _) => {
@@ -246,7 +293,7 @@ public sealed class Plugin : IPlugin
                     Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } })); }
                 catch (Exception ex) { MessageBox.Show(window, ex.Message, Name); }
             };
-            window.Controls.Add(tabs); window.Controls.Add(export); window.Controls.Add(actions); window.Controls.Add(trainerPanel); window.Controls.Add(linkedPanel); window.Controls.Add(scopeBar); window.Controls.Add(info);
+            window.Controls.Add(tabs); window.Controls.Add(export); window.Controls.Add(actions); window.Controls.Add(trainerPanel); window.Controls.Add(linkedPanel); window.Controls.Add(listOptions); window.Controls.Add(scopeBar); window.Controls.Add(info);
             window.Show();
         }
         catch (Exception ex) { MessageBox.Show(ex.Message, Name, MessageBoxButtons.OK, MessageBoxIcon.Error); }

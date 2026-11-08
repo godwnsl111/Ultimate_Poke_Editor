@@ -51,8 +51,8 @@ public static class LinkedCatalog
                 487 when source == "DreamRadar" => "기라티나 카트리지 필요. ",
                 _ => "",
             };
-            var requirement = source == "DreamRadar" ? extra + "AR 서처 포획·해금 조건 확인(카트리지 전설은 AR 서처 클리어 후). 전설은 BW2 세이브당 종류별 1회 수령 제한 확인. 현재 BW2 배지 수에 따라 레벨 5~40 자동 설정."
-                : "원본 게임 입수 조건 및 GBA 교환 해금 확인. 다크 포켓몬은 리라이브 완료 개체로 생성. 보너스 디스크 배포 제외.";
+            var requirement = source == "DreamRadar" ? extra + "AR 서처 포획·해금・클리어 및 전설 수령 조건은 충족한 것으로 가정. 현재 BW2 배지 수에 따라 레벨 5~40 자동 설정."
+                : "원본 게임 입수·GBA 교환 해금 조건은 충족한 것으로 가정. 다크 포켓몬은 리라이브 완료 개체로 생성. 보너스 디스크 배포 제외.";
             if (source == "COLO" && e.Location == 128) requirement += " 카드 e 룸: 일본어 콜로세움 및 e리더·대응 카드 필요.";
             var id = $"{v}-linked-{source}-{e.Species}-{e.Form}";
             Templates[id] = e;

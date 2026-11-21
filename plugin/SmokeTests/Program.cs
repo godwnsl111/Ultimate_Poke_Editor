@@ -3,6 +3,8 @@ using System.Text.Json;
 using PKHeX.Core;
 using UltimateEditor;
 
+if (args.Length > 0 && args[0] == "--gen9-slots-only") { Gen9SlotTests.Run(); return; }
+
 if (args.Length > 0 && args[0] == "--catalog-options-only") {
     GenerationWorkerClient.WorkerPathOverride = Path.GetFullPath("plugin/GeneratorWorker/bin/Release/net10.0/UltimateEditor.Generator.exe");
     CatalogOptionsTests.Run(args[1], args[2]); return;
@@ -10,6 +12,8 @@ if (args.Length > 0 && args[0] == "--catalog-options-only") {
 
 if (args.Length == 0 || args[0] != "--worker-probe")
     GenerationWorkerClient.WorkerPathOverride = Path.Combine(Directory.GetCurrentDirectory(), "plugin/GeneratorWorker/bin/Release/net10.0/UltimateEditor.Generator.exe");
+
+if (args.Length > 0 && args[0] == "--gen5-shiny-only") { Gen5ShinyTests.Run(args.Skip(1)); return; }
 
 if (args.Length > 0 && args[0] == "--gen7-dates-only") { Gen7DateTests.Run(); return; }
 

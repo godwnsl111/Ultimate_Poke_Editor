@@ -46,13 +46,32 @@ public sealed class InjectionPlan
         for (int i = save.NextOpenBoxSlot(); i >= 0; i = save.NextOpenBoxSlot(i)) canonical.Add(i);
         var result = new List<int>();
         var blank = save.BlankPKM;
+        byte[]? modernBlank = null;
+        if (save is SAV9SV or SAV9ZA)
+        {
+            modernBlank = new byte[save.SIZE_PARTY];
+            blank.WriteEncryptedDataParty(modernBlank);
+        }
         for (int offset = 0; offset < save.BoxCount; offset++)
         {
             int box = (startBox + offset) % save.BoxCount;
             for (int slot = 0; slot < save.BoxSlotCount; slot++)
             {
                 int index = box * save.BoxSlotCount + slot;
-                if (!canonical.Contains(index) || save.IsBoxSlotLocked(index) || save.IsBoxSlotOverwriteProtected(index)) continue;
+                if (save.IsBoxSlotLocked(index) || save.IsBoxSlotOverwriteProtected(index)) continue;
+                if (modernBlank is not null)
+                {
+                    // SV/ZA decrypt box records unconditionally. All-zero raw
+                    // empty slots therefore do not decode to all-zero PKM data.
+                    ReadOnlySpan<byte> storage = save is SAV9SV sv ? sv.BoxInfo.Data : ((SAV9ZA)save).BoxInfo.Data;
+                    // ZA appends 0x40 bytes of slot metadata. Its DLC present
+                    // flag is 1 even for empty records; it is not Pokemon data.
+                    // The native slot writer preserves this metadata in place.
+                    var raw = storage.Slice(save.GetBoxSlotOffset(index), save.SIZE_PARTY);
+                    if (raw.IndexOfAnyExcept((byte)0) < 0 || raw.SequenceEqual(modernBlank)) result.Add(index);
+                    continue;
+                }
+                if (!canonical.Contains(index)) continue;
                 var pk = save.GetBoxSlotAtIndex(index);
                 if (pk.Species != 0 || pk.IsEgg) continue;
                 var data = pk.Data[..pk.SIZE_STORED];

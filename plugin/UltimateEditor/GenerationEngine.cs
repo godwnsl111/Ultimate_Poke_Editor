@@ -79,11 +79,24 @@ public static class GenerationEngine
             }
             throw new ArgumentException("지정한 IV·성격·성별·이로치·특성에 맞는 PokeFinder PID 후보 중 선택 경로의 적법성을 통과한 결과가 없습니다. IV 일부를 무관으로 바꾸거나 조건을 조정하세요. (보조 디스크 Channel 방식 제외)");
         }
-        // Keep the native event/raid/GC locks. Never force values on a generated
-        // Pokemon merely because the converter ignored a requested constraint.
-        for (int i = 0; i < 32; i++)
+        // Only Gen5 random wild/static encounters use the dedicated correlated
+        // shiny-PID constructor. Fixed events/raids/GC keep native generation.
+        var criteria = settings.Criteria;
+        if (encounter.Generation == 5 && settings.Shiny == 1 && encounter.Shiny == Shiny.Random &&
+            encounter is EncounterSlot5 or EncounterStatic5)
+            return GenerateShiny5(encounter, route, info, settings);
+        if (encounter is PGF { PID: not 0 } && settings.Shiny != -1)
         {
-            var pk = encounter.ConvertToPKM(info, settings.Criteria);
+            var fixedGift = encounter.ConvertToPKM(info, criteria);
+            if (fixedGift.IsShiny != (settings.Shiny == 1))
+                throw new ArgumentException("이 배포 카드의 고정 PID는 요청한 이로치 여부와 다릅니다.");
+        }
+        // Random-PID Gen5 cards do not accept a shiny criterion. Keep sampling
+        // their native generator, with the existing worker deadline/cancellation.
+        int attempts = encounter is PGF { PID: 0, PIDType: 1 } && settings.Shiny == 1 ? int.MaxValue : 32;
+        for (int i = 0; i < attempts; i++)
+        {
+            var pk = encounter.ConvertToPKM(info, criteria);
             NormalizeTradeBall(pk, encounter);
             CheckTrainer(pk, encounter, route, info);
             if (pk is CK3 or XK3)
@@ -100,6 +113,42 @@ public static class GenerationEngine
     {
         if (route.Kind is RouteKind.Distribution or RouteKind.Trade || encounter is IFixedTrainer { IsFixedTrainer: true }) return;
         if (pk.ID32 != trainer.ID32) throw new ArgumentException("이 경로의 RNG 생성기가 원본 TID/SID와 다른 결과를 반환했습니다. 원본 ID를 변경하는 결과는 채택하지 않습니다. 조건을 조정하세요.");
+    }
+    private static GenerationReply GenerateShiny5(IEncounterable encounter, Route route, ITrainerInfo trainer, GenerationSettings settings)
+    {
+        // Gen5 nature/IVs are independent. PKHeX's MonochromeRNG.GetShinyPID
+        // constructs the allowed PID/gender/ability correlation directly; no
+        // 64-bit origin seed is claimed (the native converter does not track one).
+        var pk = (PK5)encounter.ConvertToPKM(trainer, EncounterCriteria.Unrestricted);
+        CheckTrainer(pk, encounter, route, trainer);
+        var criteria = settings.Criteria;
+        int permission = encounter.Ability switch { AbilityPermission.Any12 => 3, AbilityPermission.Any12H => 7, _ => (int)encounter.Ability };
+        if (settings.Ability >= 0) permission &= 1 << settings.Ability;
+        if (permission == 0) throw new ArgumentException("이 입수 경로에서는 요청한 특성번호를 얻을 수 없습니다.");
+        bool wild = encounter is EncounterSlot5 || encounter is EncounterStatic5 { IsWildCorrelationPID: true };
+        byte forcedGender = encounter is EncounterStatic5 stat ? stat.Gender : FixedGenderUtil.GenderRandom;
+        uint middle = Util.Rand32() & 0x7F00;
+        uint start = Util.Rand32() & 255;
+        pk.Nature = criteria.GetNature();
+        criteria.SetRandomIVs(pk);
+        for (uint offset = 0; offset < 256; offset++)
+        for (uint top = 0; top < 2; top++)
+        for (int ability = 0; ability < 3; ability++)
+        {
+            if (((int)permission & (1 << ability)) == 0) continue;
+            uint low = middle | ((start + offset) & 255) | top << 15;
+            uint pid = MonochromeRNG.GetShinyPID(low, ability == 1 ? 1u : 0u, pk.TID16, pk.SID16);
+            if (wild && MonochromeRNG.GetBitXor(pk, pid) != 0) continue;
+            byte gender = EntityGender.GetFromPIDAndRatio(pid, pk.PersonalInfo.Gender);
+            if (settings.Gender >= 0 && gender != settings.Gender) continue;
+            if (forcedGender != FixedGenderUtil.GenderRandom && pk.PersonalInfo.IsDualGender &&
+                (gender != forcedGender || !MonochromeRNG.IsValidForcedRandomGender(pid, forcedGender))) continue;
+            pk.PID = pid; pk.Gender = gender; pk.RefreshAbility(ability);
+            if (encounter is EncounterSlot5 { Species: 550, Form: 1, Version: GameVersion.B or GameVersion.W } && ability == 0)
+                pk.Ability = (int)Ability.Reckless;
+            if (settings.Matches(pk) && IsLegal(pk)) return Reply(pk, "PKHeX 5세대 이로치 PID 상관관계 검증", null);
+        }
+        throw new ArgumentException("선택한 5세대 경로에서 이로치·성별·특성 조건과 PID 규칙을 함께 만족하는 결과가 없습니다.");
     }
     public static void NormalizeTradeBall(PKM pk, IEncounterable encounter)
     {

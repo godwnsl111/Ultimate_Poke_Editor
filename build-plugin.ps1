@@ -21,12 +21,16 @@ if ($LASTEXITCODE -ne 0) { throw 'Trainer language validation failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Distribution filter validation failed.' }
 & $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release --no-build -- --generation-only @savePaths
 if ($LASTEXITCODE -ne 0) { throw 'Generation validation failed.' }
+& $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release --no-build -- --gen5-shiny-only (Join-Path $PSScriptRoot '../Pokemon White.sav') (Join-Path $PSScriptRoot '../Pokemon White 2.sav')
+if ($LASTEXITCODE -ne 0) { throw 'Gen5 shiny validation failed.' }
 & $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release --no-build -- --dates-only @savePaths
 if ($LASTEXITCODE -ne 0) { throw 'Distribution date validation failed.' }
 & $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release --no-build -- --gen7-dates-only
 if ($LASTEXITCODE -ne 0) { throw 'Gen7 original-date validation failed.' }
 & $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release --no-build -- --catalog-options-only (Join-Path $PSScriptRoot '../Pokemon FireRed.sav') (Join-Path $PSScriptRoot '../Pokemon Platinum.sav')
 if ($LASTEXITCODE -ne 0) { throw 'Catalog options validation failed.' }
+& $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release --no-build -- --gen9-slots-only
+if ($LASTEXITCODE -ne 0) { throw 'Gen9 empty-slot validation failed.' }
 $releaseDir = Join-Path $PSScriptRoot 'dist'
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'plugin/UltimateEditor/bin/Release/net10.0-windows/UltimateEditor.dll') -Destination $releaseDir

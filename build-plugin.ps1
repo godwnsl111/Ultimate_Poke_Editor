@@ -23,6 +23,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Distribution filter validation failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Generation validation failed.' }
 & $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release --no-build -- --gen5-shiny-only (Join-Path $PSScriptRoot '../Pokemon White.sav') (Join-Path $PSScriptRoot '../Pokemon White 2.sav')
 if ($LASTEXITCODE -ne 0) { throw 'Gen5 shiny validation failed.' }
+& $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release --no-build -- --symbols-only (Join-Path $PSScriptRoot '../Pokemon White.sav') (Join-Path $PSScriptRoot '../Pokemon White 2.sav')
+if ($LASTEXITCODE -ne 0) { throw 'Symbol encounter validation failed.' }
 & $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release --no-build -- --dates-only @savePaths
 if ($LASTEXITCODE -ne 0) { throw 'Distribution date validation failed.' }
 & $sdk run --project (Join-Path $PSScriptRoot 'plugin/SmokeTests') -c Release --no-build -- --gen7-dates-only

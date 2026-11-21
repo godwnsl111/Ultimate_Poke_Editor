@@ -6,7 +6,7 @@ public sealed record Route(
     string Id, ushort Species, byte Form, string Version, RouteKind Kind,
     byte MinLevel, byte MaxLevel, ushort Location, string Method,
     string Description, bool RequiresEvent = false, ushort EggLocation = 0,
-    string DistributionKey = "", string Requirement = "", ushort RequiredSpecies = 0, bool TradeLevelKnown = false, string LinkedSource = "")
+    string DistributionKey = "", string Requirement = "", ushort RequiredSpecies = 0, bool TradeLevelKnown = false, string LinkedSource = "", bool IsSymbol = false)
 {
     public string LocationName => LocationNames.Get(this);
     public bool NeedsReview => false; // All acquisition prerequisites are assumed satisfied.
@@ -39,11 +39,11 @@ public static class SelectionPolicy
                 : r.Kind == RouteKind.Unknown ? "unclassified_route"
                 : r.Kind == RouteKind.Unavailable ? "not_available_in_source_version"
                 : null;
-            if (reason is null && r.Kind == RouteKind.Wild &&
+            if (reason is null && r.Kind == RouteKind.Wild && !r.IsSymbol &&
                 ancestors.TryGetValue(r.Species, out var previous) && previous.Overlaps(wildSpecies))
                 reason = "pre_evolution_available_in_wild";
             if (reason is not null) excluded.Add(new(r, reason));
-            else if (r.Kind == RouteKind.Wild) eligibleWild.Add(r);
+            else if (r.Kind == RouteKind.Wild && !r.IsSymbol) eligibleWild.Add(r);
             else selected.Add(r); // Gifts/trades remain visible even for species also present in the wild.
         }
         foreach (var group in eligibleWild.GroupBy(r => (r.Species, r.Form)))

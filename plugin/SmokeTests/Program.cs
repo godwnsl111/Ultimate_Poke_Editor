@@ -14,6 +14,7 @@ if (args.Length == 0 || args[0] != "--worker-probe")
     GenerationWorkerClient.WorkerPathOverride = Path.Combine(Directory.GetCurrentDirectory(), "plugin/GeneratorWorker/bin/Release/net10.0/UltimateEditor.Generator.exe");
 
 if (args.Length > 0 && args[0] == "--gen5-shiny-only") { Gen5ShinyTests.Run(args.Skip(1)); return; }
+if (args.Length > 0 && args[0] == "--symbols-only") { SymbolEncounterTests.Run(args[1], args[2]); return; }
 
 if (args.Length > 0 && args[0] == "--gen7-dates-only") { Gen7DateTests.Run(); return; }
 
@@ -78,7 +79,7 @@ foreach (var version in new[] { GameVersion.FR, GameVersion.LG, GameVersion.R, G
     Check(report.Selected.Count > 0, $"{version} produces game-wide candidates");
     Check(report.Selected.All(r => r.Version == own), $"{version} primary routes retain source version");
     Check(!report.Selected.Any(r => r.Kind is RouteKind.BredEgg or RouteKind.Unknown), $"{version} no breeding or unclassified candidates");
-    Check(!report.Selected.GroupBy(r => (r.Species, r.Form)).Any(g => g.Count(r => r.Kind == RouteKind.Wild) > 1), $"{version} wild minimum route per species/form");
+    Check(!report.Selected.GroupBy(r => (r.Species, r.Form)).Any(g => g.Count(r => r.Kind == RouteKind.Wild && !r.IsSymbol) > 1), $"{version} wild minimum route per species/form");
     Check(!merged.Selected.Where(r => r.Kind != RouteKind.Distribution).GroupBy(r => r.Species).Any(g => g.Select(r => r.Version).Distinct().Count() > 1), $"{version} merged source deduplication");
     Check(report.Selected.All(r => merged.Selected.Contains(r)), $"{version} mirror merge preserves primary routes");
     Check(MirrorCatalog.Build(version, false).Selected.SequenceEqual(report.Selected), $"{version} mirror disabled is primary only");

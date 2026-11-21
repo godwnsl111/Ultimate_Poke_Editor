@@ -60,14 +60,14 @@ public static class EncounterCatalog
                 var id = $"{version}-{index++:D5}";
                 Templates[(version, id)] = e;
                 routes.Add(new(id, e.Species, e.Form, version.ToString(), kind,
-                    e.LevelMin, e.LevelMax, e.Location, method, e.LongName, requiresEvent, e.EggLocation));
+                    e.LevelMin, e.LevelMax, e.Location, method, e.LongName, requiresEvent, e.EggLocation, IsSymbol: kind == RouteKind.Wild && EncounterAdapter.IsSymbol(e)));
             }
         }
         var adjusted = AcquisitionRequirements.Apply(version, routes);
         var result = SelectionPolicy.Select(adjusted, version.ToString(), ancestors, 1, profile.MaxSpecies);
         return new(version.ToString(), typeof(PKM).Assembly.GetName().Version?.ToString() ?? "unknown",
             "해당 게임 전체 입수 후보" +
-            "; no breeding or evolution expansion; NPC/event prerequisites require review; direct distributions retain card constraints",
+            "; no breeding or evolution expansion; static symbol captures retained; acquisition prerequisites assumed satisfied; direct distributions retain card constraints",
             result.Selected, result.Excluded);
     }
 }

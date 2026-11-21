@@ -111,7 +111,8 @@ public sealed class Plugin : IPlugin
                     if (routeKinds[routeFilter.SelectedIndex] is { } kind && r.Kind != kind) return false;
                     string query = routeText.Text.Trim();
                     string linkedName = r.LinkedSource == "DreamRadar" ? "드림 AR 서처 드림레이더 Dream Radar" : r.LinkedSource;
-                    if (query.Length > 0 && !($"{r.LocationName} {r.Method} {r.Description} {r.Version} {linkedName}").Contains(query, StringComparison.OrdinalIgnoreCase)) return false;
+                    string symbolName = r.IsSymbol ? "심볼 인카운터 고정 심볼 포획" : "";
+                    if (query.Length > 0 && !($"{r.LocationName} {r.Method} {r.Description} {r.Version} {linkedName} {symbolName}").Contains(query, StringComparison.OrdinalIgnoreCase)) return false;
                     if (r.Kind != RouteKind.Distribution) return true;
                     if (!showDistributions.Checked) return false;
                     int filter = distributionLanguages[distributionLanguage.SelectedIndex];
@@ -122,11 +123,11 @@ public sealed class Plugin : IPlugin
                 var visibleRoutes = report.Selected.Where(VisibleRoute).ToArray();
                 info.Text = $"게임: {GameProfile.DisplayName(version)}   트레이너: {save.OT}   TID: {save.GetDisplayTID()}   SID: {save.GetDisplaySID()}\n" +
                 $"표시 {visibleRoutes.Length}개 경로 / {visibleRoutes.Select(r => r.Species).Distinct().Count()}종. " +
-                "교배 제외 · 야생 최저 레벨 · 야생 미진화체 우선\n" +
+                "교배 제외 · 일반 야생 최저 레벨·미진화체 우선 · 고정 심볼 별도 보존\n" +
                 "모든 입수 선행 조건은 충족한 것으로 가정합니다. 직접 배포는 수령 언어별 표시·카드별 중복 가능. 파일 저장은 PKHeX에서 수행하세요.";
             while (tabs.TabPages.Count > 0) { var page = tabs.TabPages[0]; tabs.TabPages.Remove(page); page.Dispose(); }
             var selected = visibleRoutes.Select(r => new {
-                번호 = r.Species, 이름 = ((Species)r.Species).ToString(), 경로 = r.Kind.ToString(),
+                번호 = r.Species, 이름 = ((Species)r.Species).ToString(), 경로 = r.Kind.ToString(), 입수형태 = r.IsSymbol ? "심볼 인카운터" : r.Kind == RouteKind.Wild ? "일반 야생" : "",
                 입수버전 = r.Version, 연동출처 = r.LinkedSource, 폼 = r.Form, 구분 = r.Version == version.ToString() ? "기본 버전" : "상대 버전 전용",
                 주입지원 = InjectionDialogs.IsSupported(r) && AcquisitionRequirements.LanguageIssue(r, ReceivingLanguage(r)) is null,
                 입수언어안내 = AcquisitionRequirements.LanguageIssue(r, ReceivingLanguage(r)) ?? "",

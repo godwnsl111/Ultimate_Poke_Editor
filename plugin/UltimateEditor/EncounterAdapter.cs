@@ -4,6 +4,9 @@ namespace UltimateEditor;
 
 public static class EncounterAdapter
 {
+    public static bool IsSymbol(IEncounterable e) => Classify(e) == RouteKind.Wild &&
+        e.GetType().Name.StartsWith("EncounterStatic", StringComparison.Ordinal);
+
     public static RouteKind Classify(IEncounterable e) => e switch
     {
         // External services/accessories are not direct in-game acquisition.
